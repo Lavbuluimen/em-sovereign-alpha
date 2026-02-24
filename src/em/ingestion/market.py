@@ -34,9 +34,9 @@ def pull_market_features(start: str = "2015-01-01") -> pd.DataFrame:
     df = pd.concat([emb_px, cmdty_px, fred_df], axis=1).sort_index()
 
     out = pd.DataFrame(index=df.index)
-    out["EMB_ret"] = df["EMB"].pct_change()
+    out["EMB_ret"] = df["EMB"].pct_change(fill_method=None)
     for c in ["Brent", "WTI", "Copper", "Gold"]:
-        out[f"{c}_ret"] = df[c].pct_change()
+        out[f"{c}_ret"] = df[c].pct_change(fill_method=None)
     out["DGS10_chg"] = df["DGS10"].diff()  # yield change in percentage points
 
     return out.dropna(how="all")

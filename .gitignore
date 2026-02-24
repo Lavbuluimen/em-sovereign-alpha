@@ -1,0 +1,13 @@
+__pycache__/
+.ipynb_checkpoints/
+.DS_Store
+
+# Data artifacts
+data/raw/
+data/processed/
+data/features/
+data/models/
+data/backtests/
+
+# Secrets
+.env

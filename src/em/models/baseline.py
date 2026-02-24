@@ -34,7 +34,7 @@ def make_xy(df: pd.DataFrame, feature_cols: Iterable[str] = FEATURE_COLS) -> tup
     X_t = features_t
     """
     X = df.loc[:, list(feature_cols)].copy()
-    y = df[TARGET_COL].shift(-1)  # next-day target
+    y = df[TARGET_COL].rolling(5).sum().shift(-5)  # predicts 5-day forward return
     # drop rows where any needed values are missing
     data = pd.concat([X, y.rename("y")], axis=1).dropna()
     X = data[list(feature_cols)]

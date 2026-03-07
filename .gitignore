@@ -1,13 +1,30 @@
+# Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter
 .ipynb_checkpoints/
+
+# Virtual environments
+.env
+.venv/
+
+# macOS
 .DS_Store
 
-# Data artifacts
-data/raw/
-data/processed/
+# Data (do not commit generated data)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Research artifacts
 data/features/
 data/models/
 data/backtests/
 
-# Secrets
-.env
+# Reports
+reports/*
+!reports/.gitkeep

@@ -6,4 +6,3 @@ pyarrow
 scikit-learn
 jupyter
 ruff
-E0F

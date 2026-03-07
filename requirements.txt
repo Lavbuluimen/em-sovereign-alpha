@@ -1,0 +1,9 @@
+pandas
+numpy
+yfinance
+pandas-datareader
+pyarrow
+scikit-learn
+jupyter
+ruff
+E0F

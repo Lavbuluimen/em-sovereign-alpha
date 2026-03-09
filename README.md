@@ -1,8 +1,30 @@
 # EM Sovereign Alpha
 
+![Python](https://img.shields.io/badge/Python-3.10+-blue)
+![Status](https://img.shields.io/badge/status-research-green)
+![License](https://img.shields.io/badge/license-research-lightgrey)
+![Dashboard](https://img.shields.io/badge/dashboard-streamlit-red)
+
 A systematic research framework for constructing a **global sovereign bond portfolio** designed to outperform the **J.P. Morgan Emerging Markets Bond Index (EMBI)**.
 
 The project builds a **data pipeline, signal engine, and portfolio construction model** that allocates across **Emerging Market and Developed Market sovereign bonds**, including both **hard-currency and local-currency exposures**.
+
+---
+
+# Table of Contents
+
+- [Strategy Overview](#strategy-overview)
+- [Investment Philosophy](#investment-philosophy)
+- [Why Systematic EM Sovereign Investing Works](#why-systematic-em-sovereign-investing-works)
+- [Strategy Characteristics](#strategy-characteristics)
+- [Model Architecture](#model-architecture)
+- [Data Sources](#data-sources)
+- [Example Portfolio Output](#example-portfolio-output)
+- [Research Workflow](#research-workflow)
+- [Future Research Roadmap](#future-research-roadmap)
+- [Why This Project Matters](#why-this-project-matters)
+- [Running the Project](#running-the-project)
+- [License](#license)
 
 ---
 

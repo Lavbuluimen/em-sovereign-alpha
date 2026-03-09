@@ -1,81 +1,137 @@
-# EM Sovereign Alpha Project
-A systematic research framework for constructing a global sovereign bond portfolio designed to outperform the J.P. Morgan Emerging Markets Bond Index (EMBI).
+# EM Sovereign Alpha
 
-The project builds a data pipeline, signal engine, and portfolio construction model that allocates across Emerging Market and Developed Market sovereign bonds, including both hard-currency and local-currency exposures.
+A systematic research framework for constructing a **global sovereign bond portfolio** designed to outperform the **J.P. Morgan Emerging Markets Bond Index (EMBI)**.
 
-## Project Objective
-The goal of this project is to develop a systematic sovereign bond allocation strategy that:
-**Outperforms the J.P. Morgan EMBI index on an annualized basis**
-**Maintains approximately 5% tracking error vs benchmark**
-**Operates long-only**
-**Uses publicly available macro and market data**
+The project builds a **data pipeline, signal engine, and portfolio construction model** that allocates across **Emerging Market and Developed Market sovereign bonds**, including both **hard-currency and local-currency exposures**.
 
-The model generates daily signals and produces weekly portfolio adjustments.
+---
 
-The system ultimately provides recommendations for:
-**Countries to buy / hold / sell**
-**Position sizing**
-**Hard vs local currency allocation**
-**Duration positioning**
-**Spread duration adjustments**
+# Strategy Overview
 
-## System Architecture
-The project uses a modular research pipeline.
-'''
-        Market Data
-            ↓
-        Country Panel
-            ↓
-        Country Scoring
-            ↓
-        Portfolio Allocation
-            ↓
-        Weekly Trade Actions
-'''
-All stages can be executed with:
+**EM Sovereign Alpha** is a systematic portfolio construction framework designed to allocate across **emerging market sovereign bonds and currencies** in order to generate **consistent excess returns relative to the J.P. Morgan EMBI index**.
 
-python run/update_all.py
+The strategy combines **macro signals, cross-country valuation metrics, and momentum indicators** to dynamically allocate capital across sovereign issuers, currencies, and duration exposures.
 
-## Repository Structure
+Unlike traditional discretionary approaches to emerging market debt, the framework applies a **rules-based investment process** that systematically identifies relative value opportunities across countries.
 
-em-sovereign-alpha
-│
-├─ src/em
-│
-│   ├─ country
-│   │   ├─ data.py
-│   │   ├─ universe.py
-│   │   └─ score.py
-│   │
-│   ├─ portfolio
-│   │   └─ allocator.py
-│   │
-│   ├─ ingestion
-│   │   └─ market.py
-│   │
-│   ├─ models
-│   │   └─ baseline.py
-│   │
-│   └─ utils
-│
-├─ run
-│   ├─ ingest_all.py
-│   ├─ build_country_panel.py
-│   ├─ build_country_scores.py
-│   ├─ build_portfolio.py
-│   ├─ weekly_actions.py
-│   └─ update_all.py
-│
-├─ dashboard
-│   ├─ app.py
-│   └─ coverage.py
-│
-├─ data
-│   ├─ raw
-│   └─ processed
-│
-├─ notebooks
-└─ reports
+---
+
+# Investment Philosophy
+
+Emerging market sovereign returns are driven by several key forces:
+
+- Global liquidity conditions
+- Commodity cycles
+- Currency dynamics
+- Sovereign credit spreads
+- Domestic rate environments
+
+These drivers often create **persistent cross-country dislocations** in sovereign bond markets.
+
+The strategy seeks to exploit these dislocations through a **disciplined cross-sectional ranking process** that allocates capital toward countries offering the most attractive risk-adjusted opportunities.
+
+---
+
+# Why Systematic EM Sovereign Investing Works
+
+Emerging market sovereign bond markets exhibit several structural characteristics that make them well suited to **systematic investment strategies**.
+
+Unlike developed market government bond markets, EM sovereign markets are often influenced by **macro cycles, capital flows, and commodity dynamics**, which can create persistent cross-country dislocations.
+
+These characteristics provide opportunities for a systematic framework to identify relative value across countries.
+
+---
+
+## Structural Inefficiencies
+
+### Information Dispersion
+
+Emerging markets often have **less consistent data availability and analyst coverage** than developed markets.
+
+As a result, macroeconomic developments and policy shifts may not be immediately reflected in sovereign bond prices.
+
+Systematic models can incorporate a wide range of macro signals to capture these dynamics earlier.
+
+---
+
+### Heterogeneous Macro Cycles
+
+Emerging market economies frequently operate in **different stages of the economic cycle**.
+
+For example:
+
+- commodity exporters may benefit from rising commodity prices
+- commodity importers may suffer from inflation shocks
+- countries with different monetary policy regimes react differently to global rate changes
+
+This dispersion creates **cross-country opportunities** for active allocation.
+
+---
+
+### Currency and Local Rate Dynamics
+
+Returns in EM sovereign debt are driven by multiple components:
+
+- sovereign credit spreads
+- local interest rate movements
+- currency fluctuations
+
+The interaction between these drivers creates complex return patterns that discretionary investors may struggle to evaluate consistently.
+
+Systematic models are well suited to **integrating multiple return drivers simultaneously**.
+
+---
+
+### Global Liquidity Sensitivity
+
+Emerging market assets are highly sensitive to global liquidity conditions, including:
+
+- US interest rate cycles
+- dollar strength
+- global risk sentiment
+
+Systematic models can monitor these macro variables continuously and adjust portfolio exposures accordingly.
+
+---
+
+## Advantages of a Systematic Framework
+
+### Consistency
+
+Investment decisions follow **defined rules and signals**, reducing behavioral biases that can affect discretionary portfolio management.
+
+### Breadth
+
+Systematic models can evaluate **multiple countries and signals simultaneously**, allowing for a more comprehensive view of global sovereign opportunities.
+
+### Discipline
+
+Portfolio construction rules enforce:
+
+- risk limits
+- diversification
+- consistent exposure management
+
+### Adaptability
+
+Because signals are updated regularly, the strategy can **respond dynamically to changes in macroeconomic conditions**.
+
+---
+
+# Strategy Characteristics
+
+| Feature | Description |
+|------|------|
+| Asset Class | Emerging Market Sovereign Bonds |
+| Instruments | Hard Currency Bonds and Local Currency Bonds |
+| Strategy Type | Systematic Global Macro |
+| Portfolio Structure | Long-only |
+| Benchmark | J.P. Morgan EMBI |
+| Target Tracking Error | ~5% |
+| Rebalancing | Daily signals, weekly to monthly adjustments |
+| Data Sources | Public macro and market data |
+
+---
 
 # Model Architecture
 
@@ -125,134 +181,7 @@ The EM Sovereign Alpha framework follows a modular research architecture.
                 └─────────────────────┘
 ```
 
-
-## Data Pipeline
-The system builds several intermediate datasets.
-
-### Country Panel
-data/processed/country_daily.parquet
-
-Contains:
-FX levels
-FX returns
-sovereign yields
-yield changes
-spread proxies
-local bond return proxies
-
-### Country Scores
-data/processed/country_scores_daily.parquet
-
-Contains:
-cross-country signals
-normalized alpha scores
-ranking metrics
-
-### Portfolio Allocation
-data/processed/portfolio_daily.parquet
-
-Contains:
-country weights
-benchmark weights
-active weights
-hard vs local allocation
-duration tilt
-
-### Weekly Portfolio Actions
-data/processed/weekly_actions.parquet
-
-Contains:
-BUY / HOLD / SELL signals
-weight changes
-position adjustments
-
-## Signals
-The model currently uses a combination of momentum, valuation, and rate signals.
-
-### Momentum
-20-day local bond returns
-60-day local bond returns
-FX momentum
-
-### Rate Signals
-sovereign yield changes
-yield curve movements
-
-### Valuation
-sovereign spread vs US Treasury
-
-Signals are standardized cross-sectionally using z-scores.
-
-## Country Alpha Score
-The current composite score is:
-Score =
-  0.35 × spread valuation
-+ 0.35 × bond momentum
-+ 0.30 × rate trend
-
-Scores are normalized to:
-
--1 → weakest
- 0 → neutral
-+1 → strongest opportunity
-
-These scores drive country ranking and portfolio allocation.
-
-## Portfolio Construction
-The allocator converts country scores into long-only portfolio weights.
-
-### Key Features
-Benchmark Anchor
-Portfolio begins from an equal-weight country benchmark.
-
-Active Overlay
-Active weights are derived from country scores.
-
-Constraints
-Long only
-Active weight limits
-Weight normalization
-
-## Hard vs Local Currency Allocation
-Local currency exposure is determined by:
-country score ranking
-FX momentum signals
-
-**Higher conviction countries receive greater local exposure.**
-
-### Duration Positioning
-Portfolio duration tilts based on:
-US Treasury yield trends.
-
-## Dashboard
-A Streamlit dashboard provides visualization of signals and portfolio results.
-
-Launch with:
-streamli
-
-The dashboard visualizes:
-
-- portfolio allocations
-- signal rankings
-- weekly trade recommendations
-- data coverage diagnostics
-
-### Dashboard Tabs
-**Portfolio**
-country weights
-hard vs local exposure
-
-**Scores**
-country ranking
-score history
-
-**Weekly Actions**
-buy / hold / sell signals
-
-**Coverage**
-missing data diagnostics
-dataset completeness
-source mapping
+---
 
 # Data Sources
 
@@ -274,8 +203,6 @@ These datasets are combined into a **daily panel** used for cross-country compar
 
 # Example Portfolio Output
 
-A typical model output produces **country-level allocations**.
-
 ## Example Portfolio Snapshot
 
 | Country | Weight | Hard | Local | Score |
@@ -285,6 +212,8 @@ A typical model output produces **country-level allocations**.
 | South Africa | 8.7% | 5.5% | 3.2% | 0.29 |
 | Philippines | 8.6% | 4.7% | 3.9% | 0.24 |
 | Mexico | 8.3% | 4.6% | 3.6% | 0.16 |
+
+---
 
 ## Weekly Action Report
 
@@ -299,8 +228,6 @@ A typical model output produces **country-level allocations**.
 ---
 
 # Research Workflow
-
-Typical research workflow:
 
 ## 1. Update Data
 
@@ -317,11 +244,22 @@ This rebuilds:
 
 ---
 
-## Current Limitations
-The main limitation currently is data quality.
-Some sovereign yield series have incomplete coverage when using free data sources. Improving the data layer is the most important next step.
+## 2. Inspect Dashboard
 
-Iterate Research
+```
+streamlit run dashboard/app.py
+```
+
+The dashboard visualizes:
+
+- portfolio allocations
+- signal rankings
+- weekly trade recommendations
+- data coverage diagnostics
+
+---
+
+## 3. Iterate Research
 
 New ideas are tested through:
 
@@ -334,8 +272,6 @@ and then integrated into the production pipeline.
 ---
 
 # Future Research Roadmap
-
-The long-term research roadmap includes:
 
 ## Data Improvements
 
@@ -389,42 +325,32 @@ A systematic framework allows these signals to be combined into **consistent por
 
 ---
 
-# Optional Enhancements
+# Running the Project
 
-Future versions of the system could support:
+## Install dependencies
 
-- automated daily updates
-- portfolio risk attribution
-- scenario analysis
-- macro regime classification
-- live portfolio monitoring
+```
+pip install -r requirements.txt
+```
 
 ---
 
-# Next Steps
-
-Near-term priorities:
-
-1. Improve sovereign yield data coverage  
-2. Add tracking-error based portfolio optimization  
-3. Expand the dashboard with risk analytics
-
-## Long-Term Vision
-The final framework could support:
-
-- Systematic EM sovereign strategy
-- Macro sovereign allocation fund
-- ETF or mutual fund implementation
-- Institutional portfolio construction research.
-
-## Running the Project
-Install dependencies
-pip install -r requirements.txt
-
 ## Run the full pipeline
-python run/update_all.py
-## Launch the dashboard
-streamlit run dashboard/app.py
 
-## License
-This repository is intended for research and educational purposes.
+```
+python run/update_all.py
+```
+
+---
+
+## Launch the dashboard
+
+```
+streamlit run dashboard/app.py
+```
+
+---
+
+# License
+
+This repository is intended for **research and educational purposes**.

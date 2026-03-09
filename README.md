@@ -21,22 +21,23 @@ The system ultimately provides recommendations for:
 
 ## System Architecture
 The project uses a modular research pipeline.
-
-Market Data
-     ↓
-Country Panel
-     ↓
-Country Scoring
-     ↓
-Portfolio Allocation
-     ↓
-Weekly Trade Actions
-
+'''
+        Market Data
+            ↓
+        Country Panel
+            ↓
+        Country Scoring
+            ↓
+        Portfolio Allocation
+            ↓
+        Weekly Trade Actions
+'''
 All stages can be executed with:
 
 python run/update_all.py
 
 ## Repository Structure
+
 em-sovereign-alpha
 │
 ├─ src/em
@@ -75,8 +76,57 @@ em-sovereign-alpha
 │
 ├─ notebooks
 └─ reports
-## Data Pipeline
 
+# Model Architecture
+
+The EM Sovereign Alpha framework follows a modular research architecture.
+
+```
+                ┌─────────────────────┐
+                │  Market Data Layer  │
+                │  FX / Yields / Macro│
+                └─────────┬───────────┘
+                          │
+                          ▼
+                ┌─────────────────────┐
+                │   Country Panel     │
+                │  FX, Yields, Spread │
+                │  Return Proxies     │
+                └─────────┬───────────┘
+                          │
+                          ▼
+                ┌─────────────────────┐
+                │   Signal Engine     │
+                │  Momentum           │
+                │  Valuation          │
+                │  Rate Trend         │
+                └─────────┬───────────┘
+                          │
+                          ▼
+                ┌─────────────────────┐
+                │   Country Scores    │
+                │  Cross-Section Rank │
+                │  Normalized Alpha   │
+                └─────────┬───────────┘
+                          │
+                          ▼
+                ┌─────────────────────┐
+                │ Portfolio Allocator │
+                │ Long-Only Weights   │
+                │ Hard vs Local       │
+                │ Duration Tilt       │
+                └─────────┬───────────┘
+                          │
+                          ▼
+                ┌─────────────────────┐
+                │  Portfolio Outputs  │
+                │ Weekly Actions      │
+                │ Risk & Allocation   │
+                └─────────────────────┘
+```
+
+
+## Data Pipeline
 The system builds several intermediate datasets.
 
 ### Country Panel
@@ -178,10 +228,16 @@ US Treasury yield trends.
 A Streamlit dashboard provides visualization of signals and portfolio results.
 
 Launch with:
-streamlit run dashboard/app.py
+streamli
+
+The dashboard visualizes:
+
+- portfolio allocations
+- signal rankings
+- weekly trade recommendations
+- data coverage diagnostics
 
 ### Dashboard Tabs
-
 **Portfolio**
 country weights
 hard vs local exposure
@@ -198,69 +254,168 @@ missing data diagnostics
 dataset completeness
 source mapping
 
+# Data Sources
+
+The model relies on publicly available macro and market data.
+
+| Data Type | Source | Example Variables |
+|------|------|------|
+| FX Rates | Yahoo Finance | BRL/USD, MXN/USD |
+| US Treasury Yields | FRED | DGS10 |
+| Sovereign Yields | FRED / OECD | 10Y Government Bond |
+| Commodities | Yahoo Finance | Oil, Copper, Gold |
+| Volatility | Yahoo Finance | VIX |
+| Dollar Index | Yahoo Finance | DXY |
+| EM Credit Proxy | ETF / Index Proxy | EMB |
+
+These datasets are combined into a **daily panel** used for cross-country comparisons.
+
+---
+
+# Example Portfolio Output
+
+A typical model output produces **country-level allocations**.
+
+## Example Portfolio Snapshot
+
+| Country | Weight | Hard | Local | Score |
+|-------|------|------|------|------|
+| Brazil | 10.2% | 5.1% | 5.1% | 0.69 |
+| Romania | 8.9% | 5.4% | 3.4% | 0.32 |
+| South Africa | 8.7% | 5.5% | 3.2% | 0.29 |
+| Philippines | 8.6% | 4.7% | 3.9% | 0.24 |
+| Mexico | 8.3% | 4.6% | 3.6% | 0.16 |
+
+## Weekly Action Report
+
+| Country | Action | Weight Change |
+|------|------|------|
+| Indonesia | BUY / ADD | +1.46% |
+| Philippines | BUY / ADD | +0.92% |
+| Chile | BUY / ADD | +0.68% |
+| Poland | SELL / TRIM | −0.39% |
+| Brazil | SELL / TRIM | −0.41% |
+
+---
+
+# Research Workflow
+
+Typical research workflow:
+
+## 1. Update Data
+
+```
+python run/update_all.py
+```
+
+This rebuilds:
+
+- country panel
+- signals
+- portfolio weights
+- weekly actions
+
+---
+
 ## Current Limitations
 The main limitation currently is data quality.
-Some sovereign yield series have incomplete coverage when using free data sources.
-Improving the data layer is the most important next step.
+Some sovereign yield series have incomplete coverage when using free data sources. Improving the data layer is the most important next step.
 
-## Remaining Development Tasks
-### Improve Data Sources
-Replace incomplete yield series with more reliable sources.
+Iterate Research
 
-Possible improvements include:
-FRED sovereign yield series
-TradingEconomics API
-sovereign CDS spreads
-EMBI spread proxies
-local bond index returns
+New ideas are tested through:
 
-### Add Risk Model
-Introduce formal portfolio risk analytics:
+```
+notebooks/
+```
 
-covariance estimation
-volatility estimation
-factor exposures
-tracking error calculation
+and then integrated into the production pipeline.
 
-### Implement Portfolio Optimizer
-Replace heuristic allocation rules with optimization.
+---
 
-Target problem:
+# Future Research Roadmap
+
+The long-term research roadmap includes:
+
+## Data Improvements
+
+- sovereign CDS spreads
+- EMBI country spreads
+- local bond index returns
+
+## Risk Model
+
+- covariance estimation
+- volatility estimation
+- factor exposures
+- tracking error calculation
+
+## Portfolio Optimization
+
+Move from heuristic allocation to optimization:
+
+```
 maximize alpha
 
-subject to:
+subject to
+
 tracking error ≤ 5%
 weights ≥ 0
 country caps
 liquidity constraints
+```
 
-### Add Macro Regime Overlay
-Incorporate global macro signals such as:
+## Macro Overlay
 
-global liquidity
-US dollar regime
-commodity cycle
-risk sentiment
+Add regime signals:
 
-These signals should scale overall EM exposure.
+- global liquidity
+- dollar cycle
+- commodity cycle
+- volatility regime
 
-### Expand Backtesting Framework
-Develop a full historical backtest including:
+---
 
-portfolio returns
-benchmark comparison
-drawdowns
-information ratio
-turnover
-transaction costs
+# Why This Project Matters
+
+Emerging market sovereign returns are driven by:
+
+- global liquidity
+- commodity cycles
+- currency movements
+- sovereign credit spreads
+
+A systematic framework allows these signals to be combined into **consistent portfolio decisions** rather than discretionary views.
+
+---
+
+# Optional Enhancements
+
+Future versions of the system could support:
+
+- automated daily updates
+- portfolio risk attribution
+- scenario analysis
+- macro regime classification
+- live portfolio monitoring
+
+---
+
+# Next Steps
+
+Near-term priorities:
+
+1. Improve sovereign yield data coverage  
+2. Add tracking-error based portfolio optimization  
+3. Expand the dashboard with risk analytics
 
 ## Long-Term Vision
 The final framework could support:
 
-systematic EM sovereign strategy
-macro sovereign allocation fund
-ETF or mutual fund implementation
-institutional portfolio construction research.
+- Systematic EM sovereign strategy
+- Macro sovereign allocation fund
+- ETF or mutual fund implementation
+- Institutional portfolio construction research.
 
 ## Running the Project
 Install dependencies

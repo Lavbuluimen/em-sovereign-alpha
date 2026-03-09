@@ -48,7 +48,7 @@ Emerging market sovereign returns are driven by several key forces:
 - Sovereign credit spreads
 - Domestic rate environments
 
-These drivers often create **persistent cross-country dislocations** in sovereign bond markets.
+These drivers often create **persistent cross-country dislocations or mispricing** in sovereign bond markets.
 
 The strategy seeks to exploit these dislocations through a **disciplined cross-sectional ranking process** that allocates capital toward countries offering the most attractive risk-adjusted opportunities.
 

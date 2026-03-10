@@ -26,6 +26,8 @@ def main() -> None:
         for c in [
             "country",
             "score",
+            "signal_confidence",
+            "bond_data_coverage_60d",
             "score_pct",
             "score_scaled",
             "score_raw",

@@ -14,7 +14,6 @@ COUNTRY_UNIVERSE = [
     "Thailand",
 ]
 
-# FX tickers (Yahoo Finance)
 FX_TICKERS = {
     "Brazil": "BRL=X",
     "Mexico": "MXN=X",
@@ -31,19 +30,34 @@ FX_TICKERS = {
     "Thailand": "THB=X",
 }
 
-# 10Y government bond yield tickers (Stooq)
-YIELD10Y_TICKERS = {
-    "Brazil": "10YBRY.B",
-    "Mexico": "10YMXY.B",
-    "Colombia": "10YCOY.B",
-    "Chile": "10YCLY.B",
-    "Peru": "10YPEY.B",
-    "South Africa": "10YZAY.B",
-    "Poland": "10YPLY.B",
-    "Hungary": "10YHUY.B",
-    "Romania": "10YROY.B",
-    "Indonesia": "10YIDY.B",
-    "Malaysia": "10YMYY.B",
-    "Philippines": "10YPHY.B",
-    "Thailand": "10YTHY.B",
+# OECD long-term government bond yields via FRED
+# Some may have weaker coverage than others; failures are handled gracefully.
+YIELD10Y_FRED = {
+    "Brazil": "IRLTLT01BRM156N",
+    "Mexico": "IRLTLT01MXM156N",
+    "Colombia": "IRLTLT01COM156N",
+    "Chile": "IRLTLT01CLM156N",
+    "Peru": "IRLTLT01PEM156N",
+    "South Africa": "IRLTLT01ZAM156N",
+    "Poland": "IRLTLT01PLM156N",
+    "Hungary": "IRLTLT01HUM156N",
+    "Romania": "IRLTLT01ROM156N",
+    "Indonesia": "IRLTLT01IDM156N",
+    "Malaysia": "IRLTLT01MYM156N",
+    "Philippines": "IRLTLT01PHM156N",
+    "Thailand": "IRLTLT01THM156N",
+}
+
+GLOBAL_MACRO_FRED = {
+    "us10y": "DGS10",
+    "us2y": "DGS2",
+}
+
+GLOBAL_MACRO_YAHOO = {
+    "VIX": "^VIX",
+    "DXY": "DX-Y.NYB",
+    "Brent": "BZ=F",
+    "WTI": "CL=F",
+    "Copper": "HG=F",
+    "Gold": "GC=F",
 }

@@ -62,18 +62,32 @@ def build_country_scores(panel: pd.DataFrame) -> pd.DataFrame:
     for col in feature_cols:
         df[f"{col}_z"] = zscore_cross_section(df, col).fillna(0.0)
 
-    # Raw composite score
+    # Raw sovereign score
     df["score_raw"] = (
         0.35 * df["hard_spread_proxy_z"] +
         0.35 * df["local_ret_20d_z"] +
         0.30 * (-df["yield_60d_chg_z"])
     )
 
-    # Normalize to PM-friendly scale
+    # Bond-data availability indicator
+    df["has_bond_data"] = (
+        df["y10y"].notna().astype(float) +
+        df["hard_spread_proxy"].notna().astype(float)
+    ) / 2.0
+
+    # Trailing 60-business-day bond data coverage
+    df["bond_data_coverage_60d"] = df.groupby("country")["has_bond_data"].transform(
+        lambda x: x.rolling(60, min_periods=20).mean()
+    ).fillna(0.0)
+
+    # Confidence score
+    df["signal_confidence"] = df["bond_data_coverage_60d"].clip(0.0, 1.0)
+
+    # Normalize score cross-sectionally
     df["score_pct"] = pct_rank_cross_section(df, "score_raw").fillna(0.5)
     df["score_scaled"] = (2.0 * df["score_pct"] - 1.0).clip(-1.0, 1.0)
 
-    # Default downstream score
-    df["score"] = df["score_scaled"]
+    # Final score = normalized score × confidence
+    df["score"] = df["score_scaled"] * df["signal_confidence"]
 
     return df

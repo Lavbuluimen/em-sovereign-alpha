@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-
 import pandas as pd
 
 
@@ -37,19 +36,19 @@ def main() -> None:
     report_file(
         base / "country_daily.parquet",
         group_col="country",
-        cols=["y10y", "fx_usd_ret", "hard_spread_proxy", "local_ret_proxy_usd"],
+        cols=["y10y", "y10y_source", "cds_5y", "cds_source", "fx_usd_ret", "hard_spread_proxy"],
     )
 
     report_file(
         base / "country_scores_daily.parquet",
         group_col="country",
-        cols=["score", "signal_confidence", "bond_data_coverage_60d"],
+        cols=["score", "signal_confidence"],
     )
 
     report_file(
         base / "portfolio_daily.parquet",
         group_col="country",
-        cols=["weight", "hard_w", "local_w", "local_share", "duration_tilt_years"],
+        cols=["weight", "hard_w", "local_w", "local_share"],
     )
 
     report_file(base / "global_macro_daily.parquet")

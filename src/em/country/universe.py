@@ -61,3 +61,21 @@ GLOBAL_MACRO_YAHOO = {
     "Copper": "HG=F",
     "Gold": "GC=F",
 }
+
+# Sovereign 5Y CDS page slugs for optional web fallback
+# Used for WorldGovernmentBonds-style pages
+CDS_WGB_SLUGS = {
+    "Brazil": "brazil",
+    "Mexico": "mexico",
+    "Colombia": "colombia",
+    "Chile": "chile",
+    "Peru": "peru",
+    "South Africa": "south-africa",
+    "Poland": "poland",
+    "Hungary": "hungary",
+    "Romania": "romania",
+    "Indonesia": "indonesia",
+    "Malaysia": "malaysia",
+    "Philippines": "philippines",
+    "Thailand": "thailand",
+}

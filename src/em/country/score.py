@@ -64,18 +64,37 @@ def build_country_scores(panel: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Confidence now includes either bond data or CDS data
-    df["has_credit_data"] = (
-        df["y10y"].notna().astype(float) +
-        df["hard_spread_proxy"].notna().astype(float) +
-        df["cds_5y"].notna().astype(float)
-    ) / 3.0
+        # Availability flags
+    df["has_yield_data"] = df["y10y"].notna().astype(float)
+    df["has_spread_data"] = df["hard_spread_proxy"].notna().astype(float)
+    df["has_cds_data"] = df["cds_5y"].notna().astype(float)
 
-    df["signal_confidence"] = df.groupby("country")["has_credit_data"].transform(
+    # Rolling coverage
+    df["yield_coverage_60d"] = df.groupby("country")["has_yield_data"].transform(
         lambda x: x.rolling(60, min_periods=20).mean()
-    ).fillna(0.0).clip(0.0, 1.0)
+    ).fillna(0.0)
+
+    df["spread_coverage_60d"] = df.groupby("country")["has_spread_data"].transform(
+        lambda x: x.rolling(60, min_periods=20).mean()
+    ).fillna(0.0)
+
+    df["cds_coverage_60d"] = df.groupby("country")["has_cds_data"].transform(
+        lambda x: x.rolling(60, min_periods=20).mean()
+    ).fillna(0.0)
+
+    # Require meaningful CDS history before giving it full credit
+    cds_conf = (df["cds_coverage_60d"] / 0.50).clip(0.0, 1.0)
+
+    # Overall confidence
+    df["signal_confidence"] = (
+        0.4 * df["yield_coverage_60d"] +
+        0.3 * df["spread_coverage_60d"] +
+        0.3 * cds_conf
+    ).clip(0.0, 1.0)
 
     df["score_pct"] = pct_rank_cross_section(df, "score_raw").fillna(0.5)
     df["score_scaled"] = (2.0 * df["score_pct"] - 1.0).clip(-1.0, 1.0)
 
     df["score"] = df["score_scaled"] * df["signal_confidence"]
+
     return df

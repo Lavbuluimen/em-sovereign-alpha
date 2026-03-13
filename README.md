@@ -7,7 +7,7 @@
 
 A systematic research framework for constructing a **global sovereign bond portfolio** designed to outperform the **J.P. Morgan Emerging Markets Bond Index (EMBI)**.
 
-The project builds a **data pipeline, signal engine, and portfolio construction model** that allocates across **Emerging Market and Developed Market sovereign bonds**, including both **hard-currency and local-currency exposures**.
+The project builds a **data pipeline, signal engine, and portfolio construction model** that allocates across **Emerging Market and Developed Market sovereign bonds**, including both **hard-currency and local-currencies**.
 
 ---
 
@@ -54,25 +54,21 @@ The strategy seeks to take advantage of these mispricing opportunites through a 
 
 ---
 
-# Why Systematic EM Sovereign Investing Works
+# Why Systematic EM Sovereign Investing Can Work
 
-Emerging market sovereign bond markets exhibit several structural characteristics that make them well suited to **systematic investment strategies**.
+Emerging market sovereign bond markets have several structural characteristics that make them well suited to **systematic investment strategies**.
 
-Unlike developed market government bond markets, EM sovereign markets are often influenced by **macro cycles, capital flows, and commodity dynamics**, which can create persistent cross-country mispricing.
+Unlike DM sovereign bond markets, EM markets are often influenced by **macro cycles, capital flows, and commodity dynamics**, which can create on-going cross-country mispricing.
 
 These characteristics provide opportunities for a systematic framework to identify relative value more accurately across countries.
 
 ---
 
-## Structural Inefficiencies
+## Structural Limitations
 
 ### Information Dispersion
 
-Emerging markets often have **less consistent data availability and analyst coverage** than developed markets.
-
-As a result, macroeconomic developments and policy shifts may not be immediately reflected in sovereign bond prices.
-
-Systematic models can incorporate a wide range of macro signals to capture these dynamics earlier.
+Emerging markets often have **less consistent data availability and analyst coverage** than developed markets. As a result, macroeconomic developments and policy shifts may not be immediately reflected in sovereign bond prices. Systematic models can incorporate a wide range of macro signals to capture these dynamics sooner rather than later.
 
 ---
 
@@ -98,9 +94,7 @@ Returns in EM sovereign debt are driven by multiple components:
 - local interest rate movements
 - currency fluctuations
 
-The interaction between these drivers creates complex return patterns that some discretionary investors may struggle to evaluate consistently.
-
-Systematic models are well suited to **integrating multiple return drivers simultaneously**.
+The interaction between these drivers creates complex return patterns that may be challenging to evaluate consistently. Systematic models are well suited to **integrating multiple return drivers simultaneously**.
 
 ---
 
@@ -277,13 +271,13 @@ The dashboard visualizes:
 - portfolio allocations
 - signal rankings
 - weekly trade recommendations
-- data coverage diagnostics
+- data coverage diagnostics - although
 
 ---
 
 ## 3. Iterate Research
 
-New ideas are tested through:
+In most cases, new ideas are tested through:
 
 ```
 notebooks/
@@ -301,7 +295,7 @@ and then integrated into the production pipeline.
 - EMBI country spreads
 - local bond index returns
 
-## Risk Model
+## Risk Model Updates
 
 - covariance estimation
 - volatility estimation
@@ -310,7 +304,7 @@ and then integrated into the production pipeline.
 
 ## Portfolio Optimization
 
-Move from heuristic allocation to optimization:
+Move from simplified allocation to optimization:
 
 ```
 maximize alpha
@@ -334,7 +328,7 @@ Add regime signals:
 
 ---
 
-# Why This Project Matters
+# Why This Project Matters, ICYMI
 
 Emerging market sovereign returns are driven by:
 

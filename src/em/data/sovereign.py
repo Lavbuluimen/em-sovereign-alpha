@@ -4,20 +4,20 @@ from typing import Optional
 
 import pandas as pd
 
+from em.country.data import pull_yield10y_panel
 from em.data.fred import fetch_fred_series, fetch_many_fred_series
 from em.data.yahoo import fetch_many_yahoo_close
 
 
 def build_country_daily_panel(
     fx_tickers: dict[str, str],
-    yield10y_fred: dict[str, str],
+    yield10y_stooq: dict[str, str],
     start: str = "2015-01-01",
     local_duration_years: float = 5.0,
-    fred_api_key: Optional[str] = None,
 ) -> pd.DataFrame:
     fx = fetch_many_yahoo_close(fx_tickers, start=start)
-    y10_monthly = fetch_many_fred_series(yield10y_fred, start=start, api_key=fred_api_key)
-    us10_daily = fetch_fred_series("DGS10", start=start, api_key=fred_api_key).rename("us10y")
+    y10_daily = pull_yield10y_panel(yield10y_stooq, start=start)
+    us10_daily = fetch_fred_series("DGS10", start=start).rename("us10y")
 
     if fx.empty:
         raise RuntimeError("FX panel is empty. Cannot build country panel.")
@@ -25,7 +25,7 @@ def build_country_daily_panel(
     idx = pd.date_range(start=start, end=fx.index.max(), freq="B")
 
     fx_a = fx.reindex(idx).ffill()
-    y10_a = y10_monthly.reindex(idx).ffill()
+    y10_a = y10_daily.reindex(idx).ffill()
     us10_a = us10_daily.reindex(idx).ffill()
 
     # Yahoo FX is generally local per USD, so local currency USD return is approx negative pct change

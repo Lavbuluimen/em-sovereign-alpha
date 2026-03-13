@@ -1,0 +1,1 @@
+# Charts are now rendered inline in dashboard/app.py

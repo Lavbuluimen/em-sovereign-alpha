@@ -36,7 +36,7 @@ def main() -> None:
     report_file(
         base / "country_daily.parquet",
         group_col="country",
-        cols=["y10y", "y10y_source", "cds_5y", "cds_source", "fx_usd_ret", "hard_spread_proxy"],
+        cols=["y10y", "fx_usd_ret", "hard_spread_proxy", "embi_spread_proxy", "embi_spread_20d_chg"],
     )
 
     report_file(

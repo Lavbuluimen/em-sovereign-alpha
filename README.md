@@ -262,6 +262,8 @@ This rebuilds:
 
 ## 2. Inspect Dashboard
 
+Current version is still in beta mode, with updates being made regularly.
+
 ```
 streamlit run dashboard/app.py
 ```
@@ -271,7 +273,7 @@ The dashboard visualizes:
 - portfolio allocations
 - signal rankings
 - weekly trade recommendations
-- data coverage diagnostics - although
+- data coverage diagnostics
 
 ---
 
@@ -287,7 +289,7 @@ and then integrated into the production pipeline.
 
 ---
 
-# Future Research Roadmap
+# Current Research Roadmap
 
 ## Data Improvements
 
@@ -328,7 +330,7 @@ Add regime signals:
 
 ---
 
-# Why This Project Matters, ICYMI
+# Why This Project Matters, ICYMI =)
 
 Emerging market sovereign returns are driven by:
 

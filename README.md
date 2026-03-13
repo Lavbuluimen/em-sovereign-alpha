@@ -48,9 +48,9 @@ Emerging market sovereign returns are driven by several key forces:
 - Sovereign credit spreads
 - Domestic rate environments
 
-These drivers often create **persistent cross-country dislocations or mispricing** in sovereign bond markets.
+These drivers often lead to **mispriced assets** in sovereign bond markets.
 
-The strategy seeks to exploit these dislocations through a **disciplined cross-sectional ranking process** that allocates capital toward countries offering the most attractive risk-adjusted opportunities.
+The strategy seeks to take advantage of these mispricing opportunites through a **disciplined cross-sectional ranking process** that allocates capital toward countries offering the most attractive risk-adjusted opportunities.
 
 ---
 
@@ -58,9 +58,9 @@ The strategy seeks to exploit these dislocations through a **disciplined cross-s
 
 Emerging market sovereign bond markets exhibit several structural characteristics that make them well suited to **systematic investment strategies**.
 
-Unlike developed market government bond markets, EM sovereign markets are often influenced by **macro cycles, capital flows, and commodity dynamics**, which can create persistent cross-country dislocations.
+Unlike developed market government bond markets, EM sovereign markets are often influenced by **macro cycles, capital flows, and commodity dynamics**, which can create persistent cross-country mispricing.
 
-These characteristics provide opportunities for a systematic framework to identify relative value across countries.
+These characteristics provide opportunities for a systematic framework to identify relative value more accurately across countries.
 
 ---
 
@@ -98,7 +98,7 @@ Returns in EM sovereign debt are driven by multiple components:
 - local interest rate movements
 - currency fluctuations
 
-The interaction between these drivers creates complex return patterns that discretionary investors may struggle to evaluate consistently.
+The interaction between these drivers creates complex return patterns that some discretionary investors may struggle to evaluate consistently.
 
 Systematic models are well suited to **integrating multiple return drivers simultaneously**.
 

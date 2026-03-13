@@ -9,3 +9,4 @@ ruff
 streamlit
 plotly
 matplotlib
+anthropic

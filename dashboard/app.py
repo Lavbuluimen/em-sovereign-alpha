@@ -314,7 +314,7 @@ def inject_css():
     .chat-fab-wrapper {
         position: fixed;
         bottom: 28px;
-        right: 28px;
+        left: 28px;
         z-index: 9999;
     }
     .chat-fab-wrapper button {

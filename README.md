@@ -262,7 +262,7 @@ This rebuilds:
 
 ## 2. Inspect Dashboard
 
-Current version is still in beta mode, with updates being made regularly.
+Current version is still in beta mode, with updates made regularly.
 
 ```
 streamlit run dashboard/app.py

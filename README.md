@@ -15,14 +15,14 @@ The project builds a **data pipeline, signal engine, and portfolio construction 
 
 - [Strategy Overview](#strategy-overview)
 - [Investment Philosophy](#investment-philosophy)
-- [Why Systematic EM Sovereign Investing Works](#why-systematic-em-sovereign-investing-works)
+- [Why Systematic EM Sovereign Investing Can Work](#why-systematic-em-sovereign-investing-can-work)
 - [Strategy Characteristics](#strategy-characteristics)
 - [Model Architecture](#model-architecture)
 - [Data Sources](#data-sources)
 - [Example Portfolio Output](#example-portfolio-output)
 - [Research Workflow](#research-workflow)
-- [Future Research Roadmap](#future-research-roadmap)
-- [Why This Project Matters](#why-this-project-matters)
+- [Current Research Roadmap](#current-research-roadmap)
+- [Why This Project ICYMI](#why-this-project-matters-icymi)
 - [Running the Project](#running-the-project)
 - [License](#license)
 
@@ -330,7 +330,7 @@ Add regime signals:
 
 ---
 
-# Why This Project Matters, ICYMI =)
+# Why This Project Matters ICYMI
 
 Emerging market sovereign returns are driven by:
 

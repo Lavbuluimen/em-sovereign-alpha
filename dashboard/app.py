@@ -9,10 +9,8 @@ Run from the project root:
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-import anthropic
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -22,133 +20,6 @@ import streamlit as st
 # Config & styling
 # ---------------------------------------------------------------------------
 DATA_DIR = Path("data/processed")
-
-# ---------------------------------------------------------------------------
-# AI Chatbot
-# ---------------------------------------------------------------------------
-CHATBOT_SYSTEM_PROMPT = """You are an expert research assistant for the EM Sovereign Alpha platform — a systematic emerging market sovereign debt research tool. You help portfolio managers, analysts, and researchers understand the model, data, and dashboard outputs.
-
-## Model Overview
-The EM Sovereign Alpha model ranks 11 emerging market countries by their relative attractiveness for sovereign debt investment, covering both local-currency and hard-currency (USD) bonds.
-
-## Active Country Universe (as of 2026-03-13)
-Brazil, Mexico, Colombia, Chile, South Africa, Poland, Hungary, Romania, Indonesia, Malaysia, Philippines.
-Peru and Thailand were removed in March 2026 because Stooq had no reliable daily 10Y yield data for them — their signal_confidence was 0.0 throughout the backtest.
-
-## Composite Score Formula
-The model produces a cross-sectional z-scored composite score for each country. The weights are:
-
-| Signal | Weight | Direction | Meaning |
-|---|---|---|---|
-| hard_spread_proxy | 25% | Higher spread = worse | 10Y local yield minus US 10Y yield (sovereign credit risk proxy) |
-| embi_spread_20d_chg | 25% | Spread widening = worse | 20-day change in hard spread proxy (momentum) |
-| local_ret_20d | 20% | Higher return = better | 20-day local-currency total return proxy (duration + FX) |
-| yield_60d_chg | 15% | Yield rise = worse | 60-day change in 10Y yield (rate momentum) |
-| fx_ret_20d | 15% | FX appreciation = better | 20-day USD return on local currency |
-
-Score formula:
-  score_raw = 0.25 * hard_spread_proxy_z + 0.20 * local_ret_20d_z + 0.15 * (-yield_60d_chg_z) + 0.25 * (-embi_spread_20d_chg_z) + 0.15 * fx_ret_20d_z
-
-All z-scores are cross-sectional (computed across the 11 countries on each date), not time-series z-scores.
-
-## Signal Confidence
-Each country gets a signal_confidence score (0–1) based on data availability:
-  signal_confidence = 0.4 * yield_coverage_60d + 0.3 * spread_coverage_60d + 0.3 * embi_coverage_60d
-
-Countries with signal_confidence < 0.5 are flagged as unreliable. The final adjusted score is: score_adj = score_raw * signal_confidence.
-
-## Trade Signals
-- BUY: score_adj > 0.4 (strong positive signal)
-- SELL: score_adj < -0.4 (strong negative signal)
-- HOLD: otherwise
-
-## Data Sources
-
-### 10Y Government Bond Yields (primary credit signal)
-Source: Stooq (free, daily)
-Tickers: 10YBRY.B (Brazil), 10YMXY.B (Mexico), 10YCOY.B (Colombia), 10YCLY.B (Chile), 10YZAY.B (South Africa), 10YPLY.B (Poland), 10YHUY.B (Hungary), 10YROY.B (Romania), 10YIDY.B (Indonesia), 10YMYY.B (Malaysia), 10YPHY.B (Philippines)
-
-### FX Rates (local currency per USD)
-Source: Yahoo Finance (daily close)
-Tickers: BRL=X, MXN=X, COP=X, CLP=X, ZAR=X, PLN=X, HUF=X, RON=X, IDR=X, MYR=X, PHP=X
-
-### US Rates
-Source: FRED
-- DGS10: US 10-year Treasury yield (daily)
-- DGS2: US 2-year Treasury yield (daily)
-
-### Global EM Credit Environment (ICE BofA indices via FRED)
-- BAMLEMCBPIOAS (em_oas): ICE BofA EM Corporate Plus OAS — broad EM investment-grade credit spread
-- BAMLEMHBHYCRPIOAS (em_hy_oas): ICE BofA EM HY Corporate Plus OAS
-- BAMLH0A0HYM2 (us_hy_oas): ICE BofA US HY Master II OAS — global risk-off signal
-
-### Derived Feature
-- em_hy_ig_spread = em_hy_oas − em_oas: measures risk appetite within EM credit (HY premium over IG)
-
-### Commodities & Risk
-Source: Yahoo Finance
-- ^VIX: CBOE Volatility Index (equity market fear gauge)
-- BZ=F: Brent crude oil futures
-- CL=F: WTI crude oil futures
-- HG=F: Copper futures (global growth proxy)
-- GC=F: Gold futures (safe-haven signal)
-
-### USD Index
-Source: FRED — DTWEXEMEGS (Federal Reserve broad trade-weighted USD index, replaces the broken Yahoo DX-Y.NYB ticker)
-
-## Key Variables Explained
-
-**hard_spread_proxy**: Local 10Y yield minus US 10Y yield. This is a proxy for the sovereign credit spread (EMBI spread). Higher values mean higher perceived credit risk for a country.
-
-**embi_spread_proxy**: Same as hard_spread_proxy (direct copy). The name reflects its use as an EMBI spread substitute.
-
-**embi_spread_20d_chg**: 20-day change in the embi_spread_proxy. Positive means spreads are widening (deteriorating credit). Negative means spreads tightening (improving credit).
-
-**local_ret_proxy_usd**: Estimated total return in USD from holding a 5-year local-currency bond. Formula: (-5 * yield_change/100) + fx_usd_return. This approximates the P&L from duration and currency combined.
-
-**local_ret_20d**: 20-day cumulative version of local_ret_proxy_usd.
-
-**fx_usd_ret**: Daily USD return from holding the local currency (approximately -pct_change of local/USD rate).
-
-**fx_ret_20d**: 20-day cumulative FX return in USD.
-
-**yield_60d_chg**: 60-day change in 10Y local yield (in percentage points). Rising yields = capital losses for bond holders.
-
-**signal_confidence**: Data quality score (0–1). Based on how often yield data, spread data, and EMBI data were available in the last 60 trading days.
-
-**score_raw**: The raw composite score before confidence adjustment.
-
-**score_adj**: score_raw * signal_confidence. This is the final score used for rankings and signals.
-
-## Dashboard Tabs
-
-1. **Executive Summary**: Top-line KPIs (active countries, BUY/SELL counts, latest date), top BUY and SELL countries, VIX and spread gauges, macro context table.
-
-2. **Country Scores**: Full ranking table with scores, signals, and factor breakdown. Includes score bar chart and factor heatmap for cross-country comparison.
-
-3. **Portfolio Detail**: Suggested portfolio weights (overweight BUY, underweight SELL), portfolio construction details with weight chart.
-
-4. **Weekly History**: Week-over-week comparison of scores and signals. Use the slider to compare any two weeks. Shows trade signal changes, WoW score movements, and portfolio weight evolution. The "portfolio snapshot" shows the model portfolio for each selected week. The weekly comparison section at the top shows side-by-side views of the two selected weeks.
-
-5. **Market Data & Coverage**: Global macro data (rates, spreads, commodities), data coverage heatmap showing signal availability per country.
-
-## How to Interpret the Tables
-
-**Country Scores table**: Countries are ranked from highest to lowest score_adj. Green scores are bullish, red are bearish. The signal column shows BUY/HOLD/SELL based on the ±0.4 threshold on score_adj.
-
-**Factor heatmap**: Shows each factor's z-score per country. Green = positive (bullish contribution), red = negative (bearish contribution). This lets you see WHICH factors are driving each country's score.
-
-**Coverage heatmap**: Shows data availability per country and variable. Green = data present, red = missing. Low coverage = lower signal_confidence.
-
-**WoW Comparison**: The two columns show the same country ranking for two different weeks. Orange arrows (↑↓) show rank changes. Score differences are shown in the delta columns.
-
-## Methodology Notes
-- All z-scores are cross-sectional, not time-series. A z-score of +2 means 2 standard deviations above the current cross-sectional average.
-- The model is relative, not absolute — it tells you which countries look better or worse vs. each other, not whether EM as an asset class is attractive.
-- Forward-fill is applied to yields and macro data to handle weekends and holidays.
-- The backtest starts from 2015-01-01.
-
-Answer questions clearly and concisely. When explaining numbers from tables the user mentions, use the context above to provide meaningful interpretation. If asked about something outside the model's scope, say so clearly."""
 
 # Colour palette — dark professional theme
 COLORS = {
@@ -164,6 +35,56 @@ COLORS = {
     "buy": "#00D26A",
     "hold": "#8B929E",
     "sell": "#FF4B4B",
+}
+
+# Human-readable labels for raw column / ticker names
+COLUMN_LABELS: dict[str, str] = {
+    "y10y":                       "10Y Yield (%)",
+    "hard_spread_proxy":          "Spread vs US (%)",
+    "fx_level_local_per_usd":     "FX Rate (Local/USD)",
+    "fx_usd_ret":                 "Daily FX Return",
+    "fx_ret_20d":                 "FX Return (20d)",
+    "fx_vol_20d":                 "FX Volatility (20d)",
+    "fx_drawdown_60d":            "FX Drawdown (60d)",
+    "embi_spread_proxy":          "EM Spread (%)",
+    "embi_spread_20d_chg":        "EM Spread Change (20d)",
+    "credit_risk_proxy":          "Credit Risk Proxy",
+    "credit_risk_20d_chg":        "Credit Risk Change (20d)",
+    "local_ret_proxy_usd":        "Local Return (USD)",
+    "local_ret_20d":              "Local Return (20d)",
+    "yield_60d_chg":              "Yield Change (60d)",
+    "signal_confidence":          "Signal Confidence",
+    "hard_w":                     "Hard Currency Wt",
+    "local_w":                    "Local Currency Wt",
+    "local_share":                "Local Share",
+    "active_w":                   "Active Weight",
+    "bench_w":                    "Benchmark Wt",
+    "w_change":                   "Weight Change",
+    "duration_tilt_years":        "Duration Tilt (yrs)",
+    "score":                      "Score",
+    "score_adj":                  "Adj Score",
+    "weight":                     "Weight",
+    "yield_coverage_60d":         "Yield Coverage (60d)",
+    "spread_coverage_60d":        "Spread Coverage (60d)",
+    "credit_proxy_coverage_60d":  "Credit Coverage (60d)",
+    "fx_coverage_60d":            "FX Coverage (60d)",
+    "embi_coverage_60d":          "EM Spread Coverage (60d)",
+    "country":                    "Country",
+}
+
+MACRO_LABELS: dict[str, str] = {
+    "DGS10":                  "US 10Y Treasury Yield",
+    "DGS2":                   "US 2Y Treasury Yield",
+    "BAMLEMCBPIOAS":          "EM Credit Spread (OAS)",
+    "BAMLEMHBHYCRPIOAS":      "EM High Yield Spread (OAS)",
+    "BAMLH0A0HYM2":           "US High Yield Spread (OAS)",
+    "em_hy_ig_spread":        "EM HY Premium over IG",
+    "^VIX":                   "VIX (Volatility Index)",
+    "BZ=F":                   "Brent Crude Oil",
+    "CL=F":                   "WTI Crude Oil",
+    "HG=F":                   "Copper Futures",
+    "GC=F":                   "Gold Futures",
+    "DTWEXEMEGS":             "USD Trade-Weighted Index",
 }
 
 PLOTLY_TEMPLATE = "plotly_dark"
@@ -310,54 +231,6 @@ def inject_css():
         border-radius: 8px;
     }
 
-    /* Floating AI chat button */
-    .chat-fab-wrapper {
-        position: fixed;
-        bottom: 28px;
-        left: 28px;
-        z-index: 9999;
-    }
-    .chat-fab-wrapper button {
-        width: 56px !important;
-        height: 56px !important;
-        border-radius: 50% !important;
-        background: linear-gradient(135deg, #4DA3FF 0%, #6B5FFF 100%) !important;
-        border: none !important;
-        box-shadow: 0 4px 20px rgba(77, 163, 255, 0.45) !important;
-        font-size: 24px !important;
-        padding: 0 !important;
-        line-height: 56px !important;
-        cursor: pointer !important;
-        transition: transform 0.15s ease, box-shadow 0.15s ease !important;
-    }
-    .chat-fab-wrapper button:hover {
-        transform: scale(1.08) !important;
-        box-shadow: 0 6px 28px rgba(77, 163, 255, 0.6) !important;
-    }
-    .chat-fab-wrapper button p {
-        margin: 0 !important;
-        line-height: 1 !important;
-    }
-
-    /* Chat dialog messages */
-    .chat-user-msg {
-        background: #2D3139;
-        border-radius: 12px 12px 4px 12px;
-        padding: 10px 14px;
-        margin: 6px 0 6px 20%;
-        font-size: 14px;
-        color: #E6E9EF;
-    }
-    .chat-assistant-msg {
-        background: linear-gradient(135deg, #1A2A3A 0%, #1E2D40 100%);
-        border: 1px solid #2D4A6A;
-        border-radius: 12px 12px 12px 4px;
-        padding: 10px 14px;
-        margin: 6px 20% 6px 0;
-        font-size: 14px;
-        color: #E6E9EF;
-        line-height: 1.6;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -590,16 +463,16 @@ def render_scores():
         "local_ret_20d", "fx_ret_20d", "yield_60d_chg",
     ] if c in latest.columns]
 
-    display = latest[decomp_cols].copy()
+    display = latest[decomp_cols].copy().rename(columns=COLUMN_LABELS)
     st.dataframe(
         display.style.format({
-            "score": "{:+.4f}",
-            "signal_confidence": "{:.2f}",
-            "hard_spread_proxy": "{:.2f}",
-            "y10y": "{:.3f}",
-            "fx_usd_ret": "{:+.4f}",
+            "Score": "{:+.4f}",
+            "Signal Confidence": "{:.2f}",
+            "Spread vs US (%)": "{:.2f}",
+            "10Y Yield (%)": "{:.3f}",
+            "Daily FX Return": "{:+.4f}",
         }, na_rep="—").background_gradient(
-            subset=["score"], cmap="RdYlGn", vmin=-1, vmax=1
+            subset=["Score"], cmap="RdYlGn", vmin=-1, vmax=1
         ),
         width="stretch",
         hide_index=True,
@@ -666,20 +539,20 @@ def render_portfolio_detail():
     display_cols = ["country", "score", "weight", "hard_w", "local_w",
                     "local_share", "active_w", "bench_w", "duration_tilt_years"]
     display_cols = [c for c in display_cols if c in latest.columns]
-    display = latest[display_cols].copy()
+    display = latest[display_cols].copy().rename(columns=COLUMN_LABELS)
 
     st.dataframe(
         display.style.format({
-            "score": "{:+.3f}",
-            "weight": "{:.1%}",
-            "hard_w": "{:.1%}",
-            "local_w": "{:.1%}",
-            "local_share": "{:.0%}",
-            "active_w": "{:+.1%}",
-            "bench_w": "{:.1%}",
-            "duration_tilt_years": "{:+.2f}",
+            "Score": "{:+.3f}",
+            "Weight": "{:.1%}",
+            "Hard Currency Wt": "{:.1%}",
+            "Local Currency Wt": "{:.1%}",
+            "Local Share": "{:.0%}",
+            "Active Weight": "{:+.1%}",
+            "Benchmark Wt": "{:.1%}",
+            "Duration Tilt (yrs)": "{:+.2f}",
         }, na_rep="—").background_gradient(
-            subset=["weight"], cmap="Blues", vmin=0
+            subset=["Weight"], cmap="Blues", vmin=0
         ),
         width="stretch",
         hide_index=True,
@@ -789,16 +662,16 @@ def render_market_data():
 
     st.subheader("Country Market Snapshot")
     st.dataframe(
-        latest[snap_cols].style.format({
-            "y10y": "{:.3f}",
-            "hard_spread_proxy": "{:.2f}",
-            "fx_level_local_per_usd": "{:.2f}",
-            "fx_usd_ret": "{:+.4f}",
-            "embi_spread_proxy": "{:.3f}",
-            "embi_spread_20d_chg": "{:+.3f}",
-            "credit_risk_proxy": "{:.3f}",
-            "fx_vol_20d": "{:.4f}",
-            "fx_drawdown_60d": "{:.3f}",
+        latest[snap_cols].rename(columns=COLUMN_LABELS).style.format({
+            "10Y Yield (%)": "{:.3f}",
+            "Spread vs US (%)": "{:.2f}",
+            "FX Rate (Local/USD)": "{:.2f}",
+            "Daily FX Return": "{:+.4f}",
+            "EM Spread (%)": "{:.3f}",
+            "EM Spread Change (20d)": "{:+.3f}",
+            "Credit Risk Proxy": "{:.3f}",
+            "FX Volatility (20d)": "{:.4f}",
+            "FX Drawdown (60d)": "{:.3f}",
         }, na_rep="—"),
         width="stretch",
         hide_index=True,
@@ -834,7 +707,7 @@ def render_market_data():
 
     # --- Spread comparison ---
     if "hard_spread_proxy" in latest.columns:
-        st.subheader("Hard Spread Proxy (Local 10Y − US 10Y)")
+        st.subheader("Sovereign Credit Spread (Local 10Y − US 10Y)")
         sorted_spreads = latest.sort_values("hard_spread_proxy", ascending=False)
         spread_colors = ["#FF4B4B" if v > 5 else "#FFB347" if v > 2 else "#00D26A"
                          for v in sorted_spreads["hard_spread_proxy"].fillna(0)]
@@ -864,22 +737,26 @@ def render_market_data():
         macro_recent = macro[macro["date"] >= cutoff].sort_values("date")
 
         available_macro = [c for c in macro.columns if c != "date" and macro[c].notna().any()]
-        selected_macro = st.multiselect(
+        # Map friendly label → raw column name for display
+        macro_label_to_col = {MACRO_LABELS.get(c, c): c for c in available_macro}
+        macro_labels_available = list(macro_label_to_col.keys())
+        selected_labels = st.multiselect(
             "Select macro series",
-            available_macro,
-            default=available_macro[:3] if len(available_macro) >= 3 else available_macro,
+            macro_labels_available,
+            default=macro_labels_available[:3] if len(macro_labels_available) >= 3 else macro_labels_available,
             key="macro_series",
         )
+        selected_macro = [macro_label_to_col[lbl] for lbl in selected_labels]
 
         if selected_macro:
-            for series_name in selected_macro:
+            for series_name, series_label in zip(selected_macro, selected_labels):
                 fig = px.line(
                     macro_recent, x="date", y=series_name,
-                    title=series_name,
+                    title=series_label,
                     color_discrete_sequence=[COLORS["accent"]],
                 )
                 fig.update_layout(
-                    yaxis_title=series_name,
+                    yaxis_title=series_label,
                     height=300,
                     **PLOTLY_LAYOUT,
                 )
@@ -1121,16 +998,16 @@ def render_weekly_history():
     ] if c in week_sorted.columns]
 
     st.dataframe(
-        week_sorted[table_cols].style.format({
-            "score": "{:+.3f}",
-            "weight": "{:.1%}",
-            "w_change": "{:+.1%}",
-            "hard_w": "{:.1%}",
-            "local_w": "{:.1%}",
-            "local_share": "{:.0%}",
-            "duration_tilt_years": "{:+.2f}",
+        week_sorted[table_cols].rename(columns=COLUMN_LABELS).style.format({
+            "Score": "{:+.3f}",
+            "Weight": "{:.1%}",
+            "Weight Change": "{:+.1%}",
+            "Hard Currency Wt": "{:.1%}",
+            "Local Currency Wt": "{:.1%}",
+            "Local Share": "{:.0%}",
+            "Duration Tilt (yrs)": "{:+.2f}",
         }, na_rep="—").background_gradient(
-            subset=["score"], cmap="RdYlGn", vmin=-1, vmax=1
+            subset=["Score"], cmap="RdYlGn", vmin=-1, vmax=1
         ),
         width="stretch",
         hide_index=True,
@@ -1180,16 +1057,16 @@ def render_weekly_history():
             "credit_risk_proxy", "signal_confidence",
         ] if c in week_data.columns]
 
-        market_display = week_data.sort_values("score", ascending=False)[market_cols]
+        market_display = week_data.sort_values("score", ascending=False)[market_cols].rename(columns=COLUMN_LABELS)
         st.dataframe(
             market_display.style.format({
-                "y10y": "{:.3f}",
-                "hard_spread_proxy": "{:.2f}",
-                "fx_usd_ret": "{:+.4f}",
-                "embi_spread_proxy": "{:.3f}",
-                "embi_spread_20d_chg": "{:+.3f}",
-                "credit_risk_proxy": "{:.3f}",
-                "signal_confidence": "{:.2f}",
+                "10Y Yield (%)": "{:.3f}",
+                "Spread vs US (%)": "{:.2f}",
+                "Daily FX Return": "{:+.4f}",
+                "EM Spread (%)": "{:.3f}",
+                "EM Spread Change (20d)": "{:+.3f}",
+                "Credit Risk Proxy": "{:.3f}",
+                "Signal Confidence": "{:.2f}",
             }, na_rep="—"),
             width="stretch",
             hide_index=True,
@@ -1244,11 +1121,12 @@ def render_coverage():
             cov = panel.groupby("country")[key_cols].apply(
                 lambda x: x.notna().mean()
             ).reset_index()
+            display_key_cols = [COLUMN_LABELS.get(c, c) for c in key_cols]
 
             # Heatmap
             fig = go.Figure(go.Heatmap(
                 z=cov[key_cols].values,
-                x=key_cols,
+                x=display_key_cols,
                 y=cov["country"],
                 colorscale=[[0, "#FF4B4B"], [0.5, "#FFB347"], [1, "#00D26A"]],
                 text=cov[key_cols].map(lambda v: f"{v:.0%}").values,
@@ -1280,88 +1158,17 @@ def render_coverage():
         ] if c in latest.columns]
 
         if conf_cols:
+            renamed_num_cols = [COLUMN_LABELS.get(c, c) for c in conf_cols if c != "country"]
             st.dataframe(
-                latest[conf_cols].style.format({
-                    c: "{:.2f}" for c in conf_cols if c != "country"
+                latest[conf_cols].rename(columns=COLUMN_LABELS).style.format({
+                    c: "{:.2f}" for c in renamed_num_cols
                 }, na_rep="—").background_gradient(
-                    subset=[c for c in conf_cols if c != "country"],
+                    subset=renamed_num_cols,
                     cmap="RdYlGn", vmin=0, vmax=1
                 ),
                 width="stretch",
                 hide_index=True,
             )
-
-
-# ---------------------------------------------------------------------------
-# AI Chatbot dialog
-# ---------------------------------------------------------------------------
-@st.dialog("🤖 EM Sovereign AI Assistant", width="large")
-def open_chatbot():
-    """Floating chat assistant powered by Claude."""
-    if "chat_messages" not in st.session_state:
-        st.session_state.chat_messages = []
-
-    st.markdown(
-        '<p style="color:#8B929E;font-size:13px;margin-top:-8px;margin-bottom:16px;">'
-        "Ask me anything about the model, variables, data sources, or how to interpret the dashboard."
-        "</p>",
-        unsafe_allow_html=True,
-    )
-
-    # Render conversation history
-    for msg in st.session_state.chat_messages:
-        if msg["role"] == "user":
-            st.markdown(f'<div class="chat-user-msg">🧑 {msg["content"]}</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="chat-assistant-msg">🤖 {msg["content"]}</div>', unsafe_allow_html=True)
-
-    # Input
-    user_input = st.chat_input("Ask a question about the model or data…")
-
-    if user_input:
-        st.session_state.chat_messages.append({"role": "user", "content": user_input})
-        st.markdown(f'<div class="chat-user-msg">🧑 {user_input}</div>', unsafe_allow_html=True)
-
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        if not api_key:
-            st.error("ANTHROPIC_API_KEY environment variable is not set. Please add it to use the AI assistant.")
-            return
-
-        client = anthropic.Anthropic(api_key=api_key)
-
-        # Build messages list (exclude system from messages list)
-        messages = [
-            {"role": m["role"], "content": m["content"]}
-            for m in st.session_state.chat_messages
-        ]
-
-        # Stream response
-        response_placeholder = st.empty()
-        full_response = ""
-
-        with client.messages.stream(
-            model="claude-opus-4-6",
-            max_tokens=1024,
-            system=CHATBOT_SYSTEM_PROMPT,
-            messages=messages,
-        ) as stream:
-            for text_chunk in stream.text_stream:
-                full_response += text_chunk
-                response_placeholder.markdown(
-                    f'<div class="chat-assistant-msg">🤖 {full_response}▌</div>',
-                    unsafe_allow_html=True,
-                )
-
-        response_placeholder.markdown(
-            f'<div class="chat-assistant-msg">🤖 {full_response}</div>',
-            unsafe_allow_html=True,
-        )
-        st.session_state.chat_messages.append({"role": "assistant", "content": full_response})
-
-    if st.session_state.chat_messages:
-        if st.button("🗑 Clear conversation", key="chat_clear"):
-            st.session_state.chat_messages = []
-            st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -1417,11 +1224,6 @@ def main():
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
         render_coverage()
 
-    # --- Floating AI chat button ---
-    st.markdown('<div class="chat-fab-wrapper">', unsafe_allow_html=True)
-    if st.button("🤖", key="chat_fab", help="AI Research Assistant"):
-        open_chatbot()
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 if __name__ == "__main__":

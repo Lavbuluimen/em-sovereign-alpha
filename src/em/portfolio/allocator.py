@@ -74,13 +74,13 @@ def allocate_daily(
         local_w = w * local_share
         hard_w = w - local_w
 
-        # Duration tilt proxy using US 10Y trend
-        duration_tilt = 0.0
-        if "us10y_chg_20d" in g.columns:
-            vals = pd.Series(g["us10y_chg_20d"]).dropna()
-            if len(vals) > 0:
-                val = float(vals.iloc[0])
-                duration_tilt = float(np.clip(-val * 1.0, -0.25, 0.25))
+        # Per-country duration tilt using each country's own 60-day yield trend
+        duration_tilts = pd.Series(0.0, index=countries, dtype=float)
+        if "yield_60d_chg" in g.columns:
+            yc = pd.Series(g["yield_60d_chg"].values, index=countries, dtype=float).fillna(0.0)
+            duration_tilts = pd.Series(
+                np.clip(-yc.values * 1.0, -0.25, 0.25), index=countries, dtype=float
+            )
 
         for c in countries:
             out_rows.append(
@@ -94,7 +94,7 @@ def allocate_daily(
                     "hard_w": float(hard_w.loc[c]),
                     "local_w": float(local_w.loc[c]),
                     "local_share": float(local_share.loc[c]),
-                    "duration_tilt_years": duration_tilt,
+                    "duration_tilt_years": float(duration_tilts.loc[c]),
                 }
             )
 

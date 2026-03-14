@@ -92,6 +92,42 @@ GLOBAL_MACRO_YAHOO = {
     "Gold":   "GC=F",
 }
 
+# Monthly CPI YoY (%) per country — OECD via FRED.
+# Template: CPALTT01{CC}M659N  (CC = 2-letter ISO code)
+# Used to compute real_yield = y10y - cpi_yoy (in build_country_panel.py).
+CPI_YOY_FRED: dict[str, str] = {
+    "Brazil":       "CPALTT01BRM659N",
+    "Mexico":       "CPALTT01MXM659N",
+    "Colombia":     "CPALTT01COM659N",
+    "Chile":        "CPALTT01CLM659N",
+    "South Africa": "CPALTT01ZAM659N",
+    "Poland":       "CPALTT01PLM659N",
+    "Hungary":      "CPALTT01HUM659N",
+    "Romania":      "CPALTT01ROM659N",
+    "Indonesia":    "CPALTT01IDM659N",
+    "Malaysia":     "CPALTT01MYM659N",
+    "Philippines":  "CPALTT01PHM659N",
+    "US":           "CPALTT01USM659N",
+}
+
+# Monthly short-term interbank rate (%) per country — OECD via FRED.
+# Template: IRSTCI01{CC}M156N  (CC = 2-letter ISO code)
+# "US" entry provides us_short_rate for fx_carry = local_short_rate - us_short_rate.
+SHORT_RATE_FRED: dict[str, str] = {
+    "Brazil":       "IRSTCI01BRM156N",
+    "Mexico":       "IRSTCI01MXM156N",
+    "Colombia":     "IRSTCI01COM156N",
+    "Chile":        "IRSTCI01CLM156N",
+    "South Africa": "IRSTCI01ZAM156N",
+    "Poland":       "IRSTCI01PLM156N",
+    "Hungary":      "IRSTCI01HUM156N",
+    "Romania":      "IRSTCI01ROM156N",
+    "Indonesia":    "IRSTCI01IDM156N",
+    "Malaysia":     "IRSTCI01MYM156N",
+    "Philippines":  "IRSTCI01PHM156N",
+    "US":           "IRSTCI01USM156N",
+}
+
 # Global EM credit environment — daily series freely available on FRED.
 # Used as a cross-asset anchor for the EMBI spread proxy model.
 #   BAMLEMCBPIOAS  ICE BofA EM Corporate Plus Index OAS (bp)

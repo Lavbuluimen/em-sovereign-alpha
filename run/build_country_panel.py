@@ -2,14 +2,52 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pandas as pd
+
 from em.country.universe import (
+    CPI_YOY_FRED,
     FX_TICKERS,
     GLOBAL_MACRO_FRED,
     GLOBAL_MACRO_YAHOO,
+    SHORT_RATE_FRED,
     YIELD10Y_STOOQ,
 )
 from em.data.embi import build_embi_spread_panel
+from em.data.fred import fetch_many_fred_series
 from em.data.sovereign import build_country_daily_panel, build_global_macro_panel
+
+
+def _merge_monthly_fred(
+    country_panel: pd.DataFrame,
+    series_map: dict[str, str],
+    col_name: str,
+    start: str = "2014-01-01",
+) -> pd.DataFrame:
+    """Fetch a monthly FRED series per country, forward-fill to daily, merge into panel.
+
+    series_map keys must match the 'country' values in country_panel.
+    Entries with key "US" are skipped (handled separately as a scalar join).
+    """
+    country_keys = {k: v for k, v in series_map.items() if k != "US"}
+    raw = fetch_many_fred_series(country_keys, start=start)
+
+    if raw.empty:
+        country_panel[col_name] = float("nan")
+        return country_panel
+
+    bday_idx = pd.bdate_range(
+        start=country_panel["date"].min(), end=country_panel["date"].max()
+    )
+    daily = raw.reindex(bday_idx).ffill()
+
+    long = (
+        daily
+        .reset_index()
+        .rename(columns={"index": "date"})
+        .melt(id_vars="date", var_name="country", value_name=col_name)
+    )
+    country_panel = country_panel.merge(long, on=["date", "country"], how="left")
+    return country_panel
 
 
 def main() -> None:
@@ -26,6 +64,57 @@ def main() -> None:
 
     # Add EMBI spread proxy columns (derived from hard_spread_proxy)
     country_panel = build_embi_spread_panel(country_panel)
+
+    # ── Monthly carry / value signals ────────────────────────────────────────
+    # CPI YoY (%) — used to compute real_yield = y10y - cpi_yoy
+    country_panel = _merge_monthly_fred(
+        country_panel, CPI_YOY_FRED, "cpi_yoy", start="2014-01-01"
+    )
+
+    # Local short-term interbank rate (%) — used to compute fx_carry
+    country_panel = _merge_monthly_fred(
+        country_panel, SHORT_RATE_FRED, "local_short_rate", start="2014-01-01"
+    )
+
+    # US short rate — same value for every country on a given date
+    us_short_raw = fetch_many_fred_series({"US": SHORT_RATE_FRED["US"]}, start="2014-01-01")
+    if not us_short_raw.empty:
+        bday_idx = pd.bdate_range(
+            start=country_panel["date"].min(), end=country_panel["date"].max()
+        )
+        us_short_daily = us_short_raw["US"].reindex(bday_idx).ffill()
+        country_panel["us_short_rate"] = country_panel["date"].map(us_short_daily)
+    else:
+        country_panel["us_short_rate"] = float("nan")
+
+    # US CPI YoY — used to compute us_real_yield for the dashboard bar chart baseline
+    if "US" in CPI_YOY_FRED:
+        us_cpi_raw = fetch_many_fred_series({"US": CPI_YOY_FRED["US"]}, start="2014-01-01")
+        if not us_cpi_raw.empty:
+            bday_idx = pd.bdate_range(
+                start=country_panel["date"].min(), end=country_panel["date"].max()
+            )
+            us_cpi_daily = us_cpi_raw["US"].reindex(bday_idx).ffill()
+            country_panel["us_cpi_yoy"] = country_panel["date"].map(us_cpi_daily)
+        else:
+            country_panel["us_cpi_yoy"] = float("nan")
+
+    # Derived carry / value features
+    country_panel["real_yield"] = country_panel["y10y"] - country_panel["cpi_yoy"]
+    country_panel["fx_carry"] = (
+        country_panel["local_short_rate"] - country_panel["us_short_rate"]
+    )
+    country_panel["us_real_yield"] = country_panel["us10y"] - country_panel["us_cpi_yoy"]
+
+    # Cross-sectional ranks (1 = best) among countries with data on each date
+    country_panel["real_yield_rank"] = (
+        country_panel.groupby("date")["real_yield"]
+        .rank(ascending=False, na_option="bottom")
+    )
+    country_panel["fx_carry_rank"] = (
+        country_panel.groupby("date")["fx_carry"]
+        .rank(ascending=False, na_option="bottom")
+    )
 
     # Save country panel
     country_path = out_dir / "country_daily.parquet"
@@ -51,9 +140,13 @@ def main() -> None:
 
     print("\nCountries:", sorted(country_panel["country"].unique().tolist()))
     print("Date range:", country_panel["date"].min(), "->", country_panel["date"].max())
-    print("Missing y10y count:", int(country_panel["y10y"].isna().sum()))
+    print("Missing y10y count:",            int(country_panel["y10y"].isna().sum()))
     print("Missing embi_spread_proxy count:", int(country_panel["embi_spread_proxy"].isna().sum()))
-    print("Missing fx count:", int(country_panel["fx_level_local_per_usd"].isna().sum()))
+    print("Missing fx count:",              int(country_panel["fx_level_local_per_usd"].isna().sum()))
+    print("Missing cpi_yoy count:",         int(country_panel["cpi_yoy"].isna().sum()))
+    print("Missing local_short_rate count:", int(country_panel["local_short_rate"].isna().sum()))
+    print("Missing real_yield count:",      int(country_panel["real_yield"].isna().sum()))
+    print("Missing fx_carry count:",        int(country_panel["fx_carry"].isna().sum()))
 
 
 if __name__ == "__main__":

@@ -21,22 +21,11 @@ def main() -> None:
     last_dt = scored["date"].max()
     snap = scored[scored["date"] == last_dt].sort_values("score", ascending=False)
 
-    cols = [
-        c
-        for c in [
-            "country",
-            "score",
-            "signal_confidence",
-            "bond_data_coverage_60d",
-            "score_pct",
-            "score_scaled",
-            "score_raw",
-            "hard_spread_proxy",
-            "y10y",
-            "fx_usd_ret",
-        ]
-        if c in snap.columns
-    ]
+    cols = [c for c in [
+        "country", "score", "signal_confidence",
+        "score_raw", "hard_spread_proxy", "y10y", "fx_usd_ret",
+        "real_yield", "fx_carry",
+    ] if c in snap.columns]
 
     print("\nLatest scores:", last_dt)
     print(snap[cols].to_string(index=False))

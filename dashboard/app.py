@@ -319,7 +319,7 @@ def render_executive_summary():
     n_countries = len(latest_port)
     top_country = latest_port.iloc[0]["country"]
     top_weight = latest_port.iloc[0]["weight"]
-    duration_tilt = latest_port["duration_tilt_years"].iloc[0]
+    avg_duration = (latest_port["duration_tilt_years"] * latest_port["weight"]).sum()
     hard_total = latest_port["hard_w"].sum()
     local_total = latest_port["local_w"].sum()
 
@@ -329,8 +329,8 @@ def render_executive_summary():
     with c2:
         metric_card("Top Allocation", f"{top_weight:.1%}", top_country)
     with c3:
-        metric_card("Duration Tilt", f"{duration_tilt:+.2f}yr",
-                     "Short" if duration_tilt < 0 else "Long" if duration_tilt > 0 else "Neutral")
+        metric_card("Avg Portfolio Duration", f"{avg_duration:+.2f}yr",
+                     "Short" if avg_duration < 0 else "Long" if avg_duration > 0 else "Neutral")
     with c4:
         metric_card("Hard / Local", f"{hard_total:.0%} / {local_total:.0%}", "Currency split")
 
@@ -377,6 +377,276 @@ def render_executive_summary():
                     f'{chg:.1%}</span>',
                     unsafe_allow_html=True
                 )
+
+        st.markdown(
+            f'<p style="color:{COLORS["muted"]};font-size:12px;margin-top:10px;">'
+            "Trade signals reflect portfolio rebalancing actions — what needs to change from the current allocation. "
+            "A country can show HOLD even with a top score if it is already at its target weight, "
+            "or SELL with a positive score if it was previously overweight."
+            "</p>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+    # --- Top & Bottom Performers ---
+    scores = load_parquet("country_scores_daily.parquet")
+    if scores is not None and not scores.empty:
+        latest_scores_date = scores["date"].max()
+        latest_scores = scores[scores["date"] == latest_scores_date].copy()
+        latest_scores["score_adj"] = latest_scores["score"] * latest_scores["signal_confidence"]
+        latest_scores = (
+            latest_scores
+            .dropna(subset=["score_adj"])
+            .sort_values("score_adj", ascending=False)
+        )
+
+        top3 = latest_scores.head(3)
+        bot3 = latest_scores.tail(3).iloc[::-1]
+
+        def _performer_narrative(row: pd.Series) -> list[str]:
+            """Return up to 3 plain-English bullets explaining the score drivers."""
+            bullets = []
+            spread = row.get("hard_spread_proxy", None)
+            sp_chg = row.get("embi_spread_20d_chg", None)
+            lr = row.get("local_ret_20d", None)
+            yc = row.get("yield_60d_chg", None)
+            fx = row.get("fx_ret_20d", None)
+
+            # Credit risk level
+            if pd.notna(spread):
+                spread_bps = spread * 100
+                if spread > 4.0:
+                    bullets.append(f"Sovereign spread is wide at {spread_bps:.0f}bps above US 10Y — elevated credit risk")
+                elif spread < 1.5:
+                    bullets.append(f"Sovereign spread is tight at {spread_bps:.0f}bps above US 10Y — low perceived risk")
+
+            # Spread momentum (most important signal at 25%)
+            if pd.notna(sp_chg):
+                sp_chg_bps = sp_chg * 100
+                if sp_chg < -0.20:
+                    bullets.append(f"Spreads tightened {abs(sp_chg_bps):.0f}bps over 20 days — credit conditions improving")
+                elif sp_chg > 0.20:
+                    bullets.append(f"Spreads widened {sp_chg_bps:.0f}bps over 20 days — credit conditions deteriorating")
+
+            # Local return (20%)
+            if pd.notna(lr):
+                if lr > 0.01:
+                    bullets.append(f"20-day local return is positive (+{lr:.1%}) — bond price and/or currency tailwinds")
+                elif lr < -0.01:
+                    bullets.append(f"20-day local return is negative ({lr:.1%}) — bond or currency losses")
+
+            # Yield change 60d (15%)
+            if pd.notna(yc):
+                if yc < -0.30:
+                    bullets.append(f"10Y yield fell {abs(yc):.1f}pp over 60 days — duration momentum is bullish")
+                elif yc > 0.30:
+                    bullets.append(f"10Y yield rose {yc:.1f}pp over 60 days — duration momentum is bearish")
+
+            # FX (15%)
+            if pd.notna(fx):
+                if fx > 0.01:
+                    bullets.append(f"Currency gained {fx:.1%} vs USD over 20 days")
+                elif fx < -0.01:
+                    bullets.append(f"Currency lost {abs(fx):.1%} vs USD over 20 days")
+
+            return bullets[:3] if bullets else ["Insufficient data to generate a narrative."]
+
+        def _performer_card(row: pd.Series, rank: int, is_top: bool) -> str:
+            score_val = row.get("score_adj", 0)
+            color = COLORS["green"] if is_top else COLORS["red"]
+            bullets = _performer_narrative(row)
+            bullets_html = "".join(
+                f'<li style="margin-bottom:4px;color:#C5CAD4;font-size:13px;">{b}</li>'
+                for b in bullets
+            )
+            return f"""
+            <div style="background:linear-gradient(135deg,#1A1D24 0%,#22262E 100%);
+                        border:1px solid {color}33;border-left:3px solid {color};
+                        border-radius:10px;padding:14px 16px;margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <span style="font-weight:700;font-size:15px;color:{COLORS['text']};">
+                        #{rank} &nbsp; {row['country']}
+                    </span>
+                    <span style="display:flex;gap:6px;align-items:center;">
+                        <span style="color:{COLORS['muted']};font-size:11px;text-transform:uppercase;
+                                     letter-spacing:0.05em;">Score</span>
+                        <span style="color:{color};font-family:'JetBrains Mono',monospace;
+                                     font-size:14px;font-weight:700;">{score_val:+.2f}</span>
+                    </span>
+                </div>
+                <ul style="margin:0;padding-left:18px;">
+                    {bullets_html}
+                </ul>
+            </div>"""
+
+        st.subheader("Top & Bottom Performers")
+        st.markdown(
+            '<p class="section-subtitle">What the model is capturing — key drivers for the highest and lowest ranked countries</p>',
+            unsafe_allow_html=True,
+        )
+
+        col_top, col_bot = st.columns(2)
+        with col_top:
+            st.markdown("**🟢 Top 3 — Most Attractive**")
+            for i, (_, row) in enumerate(top3.iterrows(), 1):
+                st.markdown(_performer_card(row, i, is_top=True), unsafe_allow_html=True)
+        with col_bot:
+            st.markdown("**🔴 Bottom 3 — Least Attractive**")
+            for i, (_, row) in enumerate(bot3.iterrows(), 1):
+                rank = len(latest_scores) - i + 1
+                st.markdown(_performer_card(row, rank, is_top=False), unsafe_allow_html=True)
+
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+    # --- Carry & Value ---
+    if scores is not None and not scores.empty:
+        portfolio = load_parquet("portfolio_daily.parquet")
+
+        cv_latest = latest_scores.copy()
+        cv_avail = all(c in cv_latest.columns for c in ["real_yield", "fx_carry"])
+
+        if cv_avail:
+            # Merge in portfolio weights for bubble sizing
+            if portfolio is not None and not portfolio.empty:
+                latest_port_cv = portfolio[portfolio["date"] == portfolio["date"].max()][
+                    ["country", "weight"]
+                ]
+                cv_latest = cv_latest.merge(latest_port_cv, on="country", how="left")
+                cv_latest["weight"] = cv_latest["weight"].fillna(0.0)
+            else:
+                cv_latest["weight"] = 1.0 / len(cv_latest)
+
+            cv_data = cv_latest.dropna(subset=["real_yield", "fx_carry"])
+
+            st.subheader("Carry & Value")
+            st.markdown(
+                '<p class="section-subtitle">'
+                "What are you being paid to own these countries? "
+                "Alpha answers <em>what should I do</em> — carry answers <em>what am I earning</em>. "
+                "Top-right + green = highest-conviction positions. Top-right + red = potential value trap."
+                "</p>",
+                unsafe_allow_html=True,
+            )
+
+            col_scatter, col_bar = st.columns([3, 2])
+
+            with col_scatter:
+                # Scatter: real yield (x) vs FX carry (y), sized by weight, colored by alpha score
+                dot_colors = [
+                    f"rgba(0,210,106,{min(0.9, 0.4 + abs(s))})" if s >= 0
+                    else f"rgba(255,75,75,{min(0.9, 0.4 + abs(s))})"
+                    for s in cv_data["score_adj"]
+                ]
+                scatter_fig = go.Figure()
+                scatter_fig.add_trace(go.Scatter(
+                    x=cv_data["real_yield"],
+                    y=cv_data["fx_carry"],
+                    mode="markers+text",
+                    text=cv_data["country"],
+                    textposition="top center",
+                    textfont=dict(size=11, color=COLORS["text"]),
+                    marker=dict(
+                        size=cv_data["weight"].clip(lower=0.01) * 600,
+                        color=dot_colors,
+                        line=dict(width=1, color=COLORS["border"]),
+                    ),
+                    customdata=cv_data[["score_adj", "real_yield", "fx_carry", "weight"]].values,
+                    hovertemplate=(
+                        "<b>%{text}</b><br>"
+                        "Real Yield: %{x:.1f}%<br>"
+                        "FX Carry: %{y:.1f}%<br>"
+                        "Alpha Score: %{customdata[0]:+.2f}<br>"
+                        "Portfolio Weight: %{customdata[3]:.1%}<extra></extra>"
+                    ),
+                ))
+                # Quadrant lines at median
+                med_ry = cv_data["real_yield"].median()
+                med_fc = cv_data["fx_carry"].median()
+                scatter_fig.add_vline(x=med_ry, line_dash="dot", line_color=COLORS["muted"], line_width=1)
+                scatter_fig.add_hline(y=med_fc, line_dash="dot", line_color=COLORS["muted"], line_width=1)
+
+                scatter_fig.update_layout(
+                    title="Real Yield vs FX Carry (bubble = portfolio weight, colour = alpha score)",
+                    xaxis_title="Real Yield — 10Y yield minus CPI inflation (%)",
+                    yaxis_title="FX Carry — local rate minus US rate (%)",
+                    height=420,
+                    **PLOTLY_LAYOUT,
+                )
+                st.plotly_chart(scatter_fig, width="stretch")
+
+            with col_bar:
+                # Bar chart: real yield ranked, with US real yield baseline
+                bar_data = cv_data.sort_values("real_yield", ascending=True)
+                us_real_yield = cv_data["us_real_yield"].iloc[0] if "us_real_yield" in cv_data.columns else None
+
+                bar_colors = [
+                    COLORS["green"] if v > (us_real_yield or 0) else COLORS["red"]
+                    for v in bar_data["real_yield"]
+                ]
+                bar_fig = go.Figure(go.Bar(
+                    x=bar_data["real_yield"],
+                    y=bar_data["country"],
+                    orientation="h",
+                    marker_color=bar_colors,
+                    text=bar_data["real_yield"].apply(lambda v: f"{v:.1f}%"),
+                    textposition="outside",
+                    textfont=dict(family="JetBrains Mono", size=11),
+                ))
+                if us_real_yield is not None and pd.notna(us_real_yield):
+                    bar_fig.add_vline(
+                        x=us_real_yield,
+                        line_dash="dash",
+                        line_color="#FFD700",
+                        annotation_text=f"US real yield {us_real_yield:.1f}%",
+                        annotation_font_color="#FFD700",
+                        annotation_font_size=10,
+                    )
+                bar_fig.update_layout(
+                    title="Real Yield vs US Baseline",
+                    xaxis_title="Real Yield (%)",
+                    height=420,
+                    **PLOTLY_LAYOUT,
+                )
+                st.plotly_chart(bar_fig, width="stretch")
+
+            # Carry decomposition table
+            table_cols = {
+                "country":          "Country",
+                "y10y":             "Nominal Yield (%)",
+                "cpi_yoy":          "CPI Inflation (%)",
+                "real_yield":       "Real Yield (%)",
+                "real_yield_rank":  "Real Yield Rank",
+                "local_short_rate": "Local Rate (%)",
+                "us_short_rate":    "US Rate (%)",
+                "fx_carry":         "FX Carry (%)",
+                "fx_carry_rank":    "FX Carry Rank",
+            }
+            avail_cols = [c for c in table_cols if c in cv_latest.columns]
+            tbl = (
+                cv_latest[avail_cols]
+                .dropna(subset=["real_yield", "fx_carry"])
+                .sort_values("real_yield", ascending=False)
+                .rename(columns=table_cols)
+            )
+            fmt = {
+                "Nominal Yield (%)":  "{:.2f}",
+                "CPI Inflation (%)":  "{:.1f}",
+                "Real Yield (%)":     "{:.2f}",
+                "Real Yield Rank":    "{:.0f}",
+                "Local Rate (%)":     "{:.2f}",
+                "US Rate (%)":        "{:.2f}",
+                "FX Carry (%)":       "{:.2f}",
+                "FX Carry Rank":      "{:.0f}",
+            }
+            fmt = {k: v for k, v in fmt.items() if k in tbl.columns}
+            st.dataframe(
+                tbl.style.format(fmt, na_rep="—")
+                .background_gradient(subset=["Real Yield (%)"], cmap="RdYlGn", vmin=-2, vmax=12)
+                .background_gradient(subset=["FX Carry (%)"],   cmap="RdYlGn", vmin=-5, vmax=15),
+                width="stretch",
+                hide_index=True,
+            )
 
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
@@ -428,6 +698,33 @@ def render_scores():
 
     st.markdown(f'<p class="section-subtitle">Cross-sectional alpha scores as of {latest_date.strftime("%B %d, %Y")}</p>',
                 unsafe_allow_html=True)
+
+    # --- Score methodology explainer ---
+    with st.expander("What is the Sovereign Alpha Score?", expanded=False):
+        st.markdown("""
+**The Sovereign Alpha Score answers: which EM country looks most attractive for sovereign debt investment right now, relative to its peers?**
+
+It combines 5 signals into a single composite ranking. All signals are z-scored cross-sectionally — meaning each country is ranked against the other countries on the same date, not against its own history.
+
+| Signal | Weight | What it measures | Direction |
+|---|---|---|---|
+| Spread vs US 10Y | 25% | How wide the country's sovereign spread is | Tighter = better |
+| Spread change (20d) | 25% | Whether spreads are tightening or widening | Tightening = better |
+| Local bond + FX return (20d) | 20% | Recent total return from holding the local bond | Positive = better |
+| 10Y yield change (60d) | 15% | Whether yields are rising or falling | Falling = better |
+| FX return vs USD (20d) | 15% | Whether the local currency is strengthening | Appreciating = better |
+
+The raw score is then multiplied by a **signal confidence** factor (0–1) based on data availability over the last 60 days. Countries with patchy data are scaled down.
+
+**Three themes the score captures:**
+- **Credit risk** — Is the spread vs US Treasuries tight or wide, and is it improving or worsening?
+- **Rate momentum** — Are local yields trending in a direction that generates bond price gains?
+- **FX momentum** — Is the currency strengthening or weakening against the dollar?
+
+**Important caveats:** The score is relative, not absolute — a +1.0 means best in the current universe, not that EM is broadly attractive. It is not a valuation model and has no macro overlay for global risk-off events.
+        """)
+
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
     # --- Score bar chart (horizontal, sorted) ---
     colors = [score_bar_color(s) for s in latest["score"]]

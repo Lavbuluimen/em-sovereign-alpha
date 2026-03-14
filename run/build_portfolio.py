@@ -15,20 +15,7 @@ def main() -> None:
     scored = pd.read_parquet("data/processed/country_scores_daily.parquet")
     scored["date"] = pd.to_datetime(scored["date"])
 
-    # Build US10y 20d trend (same across countries per date)
-    us = (
-        panel[["date", "us10y"]]
-        .drop_duplicates("date")
-        .sort_values("date")
-        .set_index("date")
-    )
-    us["us10y_chg_20d"] = us["us10y"].diff(20)
-    us = us.reset_index()
-
-    # scored ALREADY contains fx_ret_20d (computed in score.py)
-    scored2 = scored.merge(us[["date", "us10y_chg_20d"]], on="date", how="left")
-
-    port = allocate_daily(scored2, max_active=0.04, cash_buffer=0.00)
+    port = allocate_daily(scored, max_active=0.04, cash_buffer=0.00)
 
     out_dir = Path("data/processed")
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -132,6 +132,22 @@ SHORT_RATE_FRED: dict[str, str] = {
 # Used as a cross-asset anchor for the EMBI spread proxy model.
 #   BAMLEMCBPIOAS  ICE BofA EM Corporate Plus Index OAS (bp)
 #   BAMLH0A0HYM2   ICE BofA US HY Master II OAS — global risk-off signal (bp)
+# Approximate JP Morgan EMBI Global Diversified weights per country.
+# Raw index weights (not renormalised to our sub-universe).
+EMBI_WEIGHTS: dict[str, float] = {
+    "Brazil":       0.045,
+    "Mexico":       0.050,
+    "Colombia":     0.035,
+    "Chile":        0.020,
+    "South Africa": 0.030,
+    "Poland":       0.025,
+    "Hungary":      0.015,
+    "Romania":      0.020,
+    "Indonesia":    0.045,
+    "Malaysia":     0.035,
+    "Philippines":  0.025,
+}
+
 EMBI_GLOBAL_FRED: dict[str, str] = {
     "em_oas":    "BAMLEMCBPIOAS",
     "us_hy_oas": "BAMLH0A0HYM2",

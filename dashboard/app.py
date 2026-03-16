@@ -668,10 +668,13 @@ def render_executive_summary():
         marker_color="#00D26A",
     ))
 
-    bench_w = 1.0 / n_countries
-    fig.add_hline(y=bench_w, line_dash="dot", line_color=COLORS["muted"],
-                  annotation_text=f"Benchmark ({bench_w:.1%})",
-                  annotation_font_color=COLORS["muted"])
+    fig.add_trace(go.Scatter(
+        x=latest_port["country"],
+        y=latest_port["bench_w"],
+        mode="markers",
+        name="EMBI Benchmark",
+        marker=dict(symbol="diamond", size=10, color=COLORS["muted"]),
+    ))
 
     fig.update_layout(
         barmode="stack",

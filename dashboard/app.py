@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -421,7 +422,7 @@ def render_executive_summary():
                         margin=dict(l=35, r=10, t=45, b=30),
                         xaxis=dict(gridcolor="#2D3139"), yaxis=dict(gridcolor="#2D3139"),
                     )
-                    st.plotly_chart(_fig_s, use_container_width=True)
+                    st.plotly_chart(_fig_s, width="stretch", key=f"risk_regime_{col_nm}")
             st.caption(
                 "90-day trend of the three risk regime inputs. Shaded green/amber/red bands show "
                 "the classification thresholds — any single reading in the amber band halves active risk; "
@@ -1881,7 +1882,562 @@ def main():
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
         render_coverage()
 
+# ---------------------------------------------------------------------------
+# Tab 6: Macro Forecasts
+# ---------------------------------------------------------------------------
+def render_macro_forecasts():
+    from em.models.macro_forecast import VAR_LABELS
 
+    forecast_dir = DATA_DIR / "macro_forecasts"
+    if not forecast_dir.exists():
+        st.info("No macro forecast data found. Run `python run/run_macro_forecast.py` first.")
+        return
+
+    # Discover available countries from saved files
+    available = sorted(set(
+        p.stem.replace("_forecast", "").replace("_", " ").title()
+        for p in forecast_dir.glob("*_forecast.parquet")
+    ))
+    if not available:
+        st.info("No forecast files found.")
+        return
+
+    country = st.selectbox("Country", available, index=0, key="macro_country")
+    tag = country.lower().replace(" ", "_")
+
+    forecast_path = forecast_dir / f"{tag}_forecast.parquet"
+    irf_path = forecast_dir / f"{tag}_irf.parquet"
+    granger_path = forecast_dir / f"{tag}_granger.parquet"
+    meta_path = forecast_dir / f"{tag}_meta.json"
+
+    if not forecast_path.exists():
+        st.warning(f"No forecast data for {country}.")
+        return
+
+    fc = pd.read_parquet(forecast_path)
+    fc["date"] = pd.to_datetime(fc["date"])
+
+    # Model metadata
+    if meta_path.exists():
+        import json
+        meta = json.loads(meta_path.read_text())
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            metric_card("VAR lag order", str(meta.get("lag_order", "—")))
+        with c2:
+            metric_card("AIC", f'{meta.get("aic", 0):.1f}')
+        with c3:
+            metric_card("BIC", f'{meta.get("bic", 0):.1f}')
+
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+    # --- Forecast fan chart ---
+    st.markdown("### Forecast fan chart")
+    var_options = fc["variable"].unique().tolist()
+    display_labels = {v: VAR_LABELS.get(v, v) for v in var_options}
+    selected_var = st.radio(
+        "Variable", var_options,
+        format_func=lambda x: display_labels[x],
+        horizontal=True, key="fc_var",
+    )
+
+    fc_var = fc[fc["variable"] == selected_var].sort_values("date")
+    history = fc_var[fc_var["step"] == 0]
+    fwd = fc_var[fc_var["step"] > 0]
+
+    fig_fc = go.Figure()
+
+    # History line
+    fig_fc.add_trace(go.Scatter(
+        x=history["date"], y=history["mean"],
+        mode="lines", name="Actual",
+        line=dict(color=COLORS["text"], width=2),
+    ))
+
+    if not fwd.empty:
+        # 95% band
+        fig_fc.add_trace(go.Scatter(
+            x=pd.concat([fwd["date"], fwd["date"][::-1]]),
+            y=pd.concat([fwd["upper_95"], fwd["lower_95"][::-1]]),
+            fill="toself", fillcolor="rgba(77,163,255,0.1)",
+            line=dict(color="rgba(0,0,0,0)"), name="95% CI", showlegend=True,
+        ))
+        # 68% band
+        fig_fc.add_trace(go.Scatter(
+            x=pd.concat([fwd["date"], fwd["date"][::-1]]),
+            y=pd.concat([fwd["upper_68"], fwd["lower_68"][::-1]]),
+            fill="toself", fillcolor="rgba(77,163,255,0.25)",
+            line=dict(color="rgba(0,0,0,0)"), name="68% CI", showlegend=True,
+        ))
+        # Forecast mean
+        fig_fc.add_trace(go.Scatter(
+            x=fwd["date"], y=fwd["mean"],
+            mode="lines", name="Forecast",
+            line=dict(color=COLORS["accent"], width=2, dash="dash"),
+        ))
+
+    fig_fc.update_layout(
+        **PLOTLY_LAYOUT,
+        title=f"{country} — {display_labels[selected_var]}",
+        height=360, legend=dict(orientation="h", y=-0.15),
+    )
+    st.plotly_chart(fig_fc, width="stretch")
+
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+    # --- Impulse Response Functions ---
+    if irf_path.exists():
+        st.markdown("### Impulse response functions")
+        st.markdown(f'<p class="section-subtitle">Response to 1 std-dev shock over 12 months</p>',
+                    unsafe_allow_html=True)
+
+        irf = pd.read_parquet(irf_path)
+        impulse_vars = irf["impulse"].unique().tolist()
+
+        cols = st.columns(len(impulse_vars))
+        for i, imp in enumerate(impulse_vars):
+            with cols[i]:
+                irf_sub = irf[irf["impulse"] == imp]
+                fig_irf = go.Figure()
+                for resp in irf_sub["response"].unique():
+                    data = irf_sub[irf_sub["response"] == resp]
+                    fig_irf.add_trace(go.Scatter(
+                        x=data["step"], y=data["value"],
+                        mode="lines", name=VAR_LABELS.get(resp, resp),
+                        line=dict(width=2),
+                    ))
+                fig_irf.add_hline(y=0, line=dict(color=COLORS["muted"], width=0.5, dash="dot"))
+                fig_irf.update_layout(
+                    **PLOTLY_LAYOUT,
+                    title=f"Shock: {VAR_LABELS.get(imp, imp)}",
+                    height=260,
+                    showlegend=(i == 0),
+                    legend=dict(orientation="h", y=-0.25),
+                    xaxis_title="Months",
+                )
+                st.plotly_chart(fig_irf, width="stretch")
+
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+    # --- Granger causality table ---
+    if granger_path.exists():
+        st.markdown("### Granger causality")
+        granger = pd.read_parquet(granger_path)
+        if not granger.empty:
+            granger["cause_label"] = granger["cause"].map(VAR_LABELS).fillna(granger["cause"])
+            granger["effect_label"] = granger["effect"].map(VAR_LABELS).fillna(granger["effect"])
+            pivot = granger.pivot(index="cause_label", columns="effect_label", values="p_value")
+
+            fig_g = go.Figure(data=go.Heatmap(
+                z=pivot.values,
+                x=pivot.columns.tolist(),
+                y=pivot.index.tolist(),
+                colorscale=[[0, COLORS["green"]], [0.05, COLORS["green"]],
+                            [0.05, COLORS["muted"]], [1.0, COLORS["muted"]]],
+                zmin=0, zmax=0.2,
+                text=pivot.round(3).values,
+                texttemplate="%{text}",
+                textfont=dict(size=13),
+                colorbar=dict(title="p-value", tickvals=[0, 0.05, 0.1, 0.2]),
+            ))
+            fig_g.update_layout(
+                **PLOTLY_LAYOUT,
+                title="Granger causality p-values (green = significant at 5%)",
+                height=260,
+                xaxis_title="Effect ←",
+                yaxis_title="Cause →",
+            )
+            st.plotly_chart(fig_g, width="stretch")
+
+
+# ---------------------------------------------------------------------------
+# Tab 7: Data Surprises
+# ---------------------------------------------------------------------------
+def render_data_surprises():
+    surprise_dir = DATA_DIR / "surprises"
+    if not surprise_dir.exists():
+        st.info("No surprise data found. Run `python run/run_surprise_analysis.py` first.")
+        return
+
+    surprise_path = surprise_dir / "surprise_panel.parquet"
+    reg_path = surprise_dir / "regression_coefficients.parquet"
+    heatmap_path = surprise_dir / "cpi_surprise_heatmap.parquet"
+
+    if not surprise_path.exists():
+        st.info("Surprise panel not found.")
+        return
+
+    surprise = pd.read_parquet(surprise_path)
+    surprise["date"] = pd.to_datetime(surprise["date"])
+
+    # --- Surprise heatmap ---
+    st.markdown("### CPI surprise heatmap")
+    st.markdown(f'<p class="section-subtitle">Red = hotter than expected, blue = cooler (last 12 months)</p>',
+                unsafe_allow_html=True)
+
+    surprise_col = st.radio("Surprise type", ["cpi_surprise", "rate_surprise"],
+                            format_func=lambda x: x.replace("_", " ").title(),
+                            horizontal=True, key="surprise_type")
+
+    if heatmap_path.exists() and surprise_col == "cpi_surprise":
+        heatmap = pd.read_parquet(heatmap_path)
+    else:
+        # Build on the fly for rate_surprise
+        df = surprise.copy()
+        df["month_str"] = df["month"].astype(str)
+        recent = sorted(df["month_str"].unique())[-12:]
+        df = df[df["month_str"].isin(recent)]
+        heatmap = df.pivot_table(index="country", columns="month_str", values=surprise_col, aggfunc="last")
+
+    if not heatmap.empty:
+        max_abs = max(heatmap.abs().max().max(), 0.1)
+        fig_hm = go.Figure(data=go.Heatmap(
+            z=heatmap.values,
+            x=heatmap.columns.tolist(),
+            y=heatmap.index.tolist(),
+            colorscale="RdBu_r",
+            zmid=0, zmin=-max_abs, zmax=max_abs,
+            text=heatmap.round(2).values,
+            texttemplate="%{text}",
+            textfont=dict(size=11),
+            colorbar=dict(title="Surprise (pp)"),
+        ))
+        fig_hm.update_layout(
+            **PLOTLY_LAYOUT,
+            height=max(300, 30 * len(heatmap)),
+            xaxis_title="Month",
+        )
+        st.plotly_chart(fig_hm, width="stretch")
+
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+    # --- Surprise → FX scatter ---
+    st.markdown("### Surprise → FX reaction")
+    st.markdown(f'<p class="section-subtitle">Each dot is one country-month; line = OLS fit</p>',
+                unsafe_allow_html=True)
+
+    scatter_data = surprise.dropna(subset=[surprise_col, "fx_ret_5d"]).copy()
+    if not scatter_data.empty:
+        regime_colors = {"Green": COLORS["green"], "Amber": COLORS["amber"], "Red": COLORS["red"]}
+
+        fig_sc = go.Figure()
+        for regime, color in regime_colors.items():
+            sub = scatter_data[scatter_data["regime"] == regime]
+            if sub.empty:
+                continue
+            fig_sc.add_trace(go.Scatter(
+                x=sub[surprise_col], y=sub["fx_ret_5d"],
+                mode="markers", name=regime,
+                marker=dict(color=color, size=6, opacity=0.6),
+                text=sub["country"],
+                hovertemplate="%{text}<br>Surprise: %{x:.2f}<br>FX 5d: %{y:.4f}<extra></extra>",
+            ))
+
+        # OLS fit line
+        from numpy.polynomial.polynomial import polyfit
+        x_all = scatter_data[surprise_col].values
+        y_all = scatter_data["fx_ret_5d"].values
+        mask = np.isfinite(x_all) & np.isfinite(y_all)
+        if mask.sum() > 5:
+            b, m = polyfit(x_all[mask], y_all[mask], 1)
+            x_line = np.linspace(x_all[mask].min(), x_all[mask].max(), 50)
+            fig_sc.add_trace(go.Scatter(
+                x=x_line, y=b + m * x_line,
+                mode="lines", name="OLS fit",
+                line=dict(color=COLORS["accent"], width=2, dash="dash"),
+            ))
+
+        fig_sc.update_layout(
+            **PLOTLY_LAYOUT,
+            height=360,
+            xaxis_title=surprise_col.replace("_", " ").title() + " (pp)",
+            yaxis_title="5-day FX return",
+            legend=dict(orientation="h", y=-0.15),
+        )
+        st.plotly_chart(fig_sc, width="stretch")
+
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+    # --- Regression coefficients ---
+    st.markdown("### Panel regression coefficients")
+    st.markdown(f'<p class="section-subtitle">FX 5d return ~ surprise + regime + interactions (HC1 robust SE, country FE)</p>',
+                unsafe_allow_html=True)
+
+    if reg_path.exists():
+        reg = pd.read_parquet(reg_path)
+        if not reg.empty:
+            reg["color"] = reg.apply(
+                lambda r: COLORS["green"] if r["significant"] else COLORS["muted"], axis=1
+            )
+            reg["label"] = reg["variable"].str.replace("_", " ").str.title()
+            reg["opacity"] = reg["significant"].map({True: 1.0, False: 0.4})
+
+            fig_reg = go.Figure()
+            fig_reg.add_trace(go.Bar(
+                y=reg["label"], x=reg["beta"],
+                orientation="h",
+                marker=dict(color=reg["color"], opacity=reg["opacity"].tolist()),
+                text=reg.apply(lambda r: f't={r["t_stat"]:.1f}', axis=1),
+                textposition="outside",
+                textfont=dict(size=11),
+            ))
+            fig_reg.add_vline(x=0, line=dict(color=COLORS["muted"], width=0.5))
+            fig_reg.update_layout(
+                **PLOTLY_LAYOUT,
+                height=260,
+                xaxis_title="Coefficient (β)",
+                showlegend=False,
+            )
+            st.plotly_chart(fig_reg, width="stretch")
+
+
+# ---------------------------------------------------------------------------
+# Tab 8: Research
+# ---------------------------------------------------------------------------
+def render_research():
+    from em.models.macro_forecast import VAR_LABELS
+
+    scored = load_parquet("country_scores_daily.parquet")
+    portfolio = load_parquet("portfolio_daily.parquet")
+
+    if scored is None:
+        st.info("No scored data found. Run the pipeline first.")
+        return
+
+    latest_date = scored["date"].max()
+    latest = scored[scored["date"] == latest_date].sort_values("score", ascending=False)
+
+    country = st.selectbox("Country deep dive", latest["country"].tolist(), index=0, key="research_country")
+    row = latest[latest["country"] == country].iloc[0]
+
+    # --- Signal decomposition bar chart ---
+    st.markdown("### Signal decomposition")
+    st.markdown(f'<p class="section-subtitle">Contribution of each signal to {country}\'s composite score</p>',
+                unsafe_allow_html=True)
+
+    signal_map = {
+        "Spread value": "spread_value_blended_z",
+        "Spread momentum": "spread_mom_blend_z",
+        "FX carry": "fx_carry_z",
+        "Real yield": "real_yield_z",
+        "Local return (60d)": "local_ret_60d_z",
+        "FX momentum (60d)": "fx_ret_60d_z",
+        "Commodity ToT": "commodity_tot_z",
+        "US real rate tilt": "us_real_rate_tilt",
+    }
+    weights = {
+        "Spread value": 0.15,
+        "Spread momentum": -0.15,  # negative because widening = bad
+        "FX carry": 0.15,
+        "Real yield": 0.10,
+        "Local return (60d)": 0.10,
+        "FX momentum (60d)": 0.05,
+        "Commodity ToT": 0.10,
+        "US real rate tilt": 1.0,  # already scaled in score.py
+    }
+
+    decomp_rows = []
+    for label, col in signal_map.items():
+        if col in row.index:
+            raw_val = float(row[col]) if pd.notna(row[col]) else 0.0
+            w = weights.get(label, 1.0)
+            contribution = raw_val * w if label != "US real rate tilt" else raw_val
+            decomp_rows.append({"signal": label, "contribution": contribution})
+
+    decomp = pd.DataFrame(decomp_rows).sort_values("contribution")
+
+    fig_decomp = go.Figure()
+    fig_decomp.add_trace(go.Bar(
+        y=decomp["signal"],
+        x=decomp["contribution"],
+        orientation="h",
+        marker=dict(
+            color=[COLORS["green"] if v >= 0 else COLORS["red"] for v in decomp["contribution"]],
+        ),
+        text=decomp["contribution"].apply(lambda v: f"{v:+.3f}"),
+        textposition="outside",
+        textfont=dict(size=11),
+    ))
+    fig_decomp.add_vline(x=0, line=dict(color=COLORS["muted"], width=0.5))
+    fig_decomp.update_layout(
+        **PLOTLY_LAYOUT,
+        height=320,
+        xaxis_title="Contribution to score",
+        showlegend=False,
+    )
+    st.plotly_chart(fig_decomp, width="stretch")
+
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+    # --- Auto-generated research card ---
+    st.markdown("### Country research card")
+
+    score = float(row["score"]) if pd.notna(row.get("score")) else 0.0
+    confidence = float(row["signal_confidence"]) if pd.notna(row.get("signal_confidence")) else 0.0
+    credit_q = float(row["credit_quality_score"]) if pd.notna(row.get("credit_quality_score")) else 0.0
+
+    # Portfolio weight and regime
+    port_weight = "—"
+    regime = "—"
+    action = "—"
+    if portfolio is not None:
+        port_latest = portfolio[
+            (portfolio["date"] == portfolio["date"].max()) & (portfolio["country"] == country)
+        ]
+        if not port_latest.empty:
+            port_weight = f'{float(port_latest.iloc[0]["weight"]) * 100:.1f}%'
+            regime = str(port_latest.iloc[0].get("regime", "—"))
+
+    # Top contributing signals
+    if decomp_rows:
+        sorted_signals = sorted(decomp_rows, key=lambda x: abs(x["contribution"]), reverse=True)
+        top_2 = sorted_signals[:2]
+        top_drivers = ", ".join(
+            f'{s["signal"]} ({s["contribution"]:+.3f})' for s in top_2
+        )
+    else:
+        top_drivers = "—"
+
+    # VAR forecast direction (if available)
+    forecast_note = ""
+    fc_dir = DATA_DIR / "macro_forecasts"
+    tag = country.lower().replace(" ", "_")
+    fc_path = fc_dir / f"{tag}_forecast.parquet"
+    if fc_path.exists():
+        fc = pd.read_parquet(fc_path)
+        fc_fwd = fc[fc["step"] > 0]
+        if not fc_fwd.empty:
+            cpi_fc = fc_fwd[fc_fwd["variable"] == "cpi_yoy"]
+            rate_fc = fc_fwd[fc_fwd["variable"] == "local_short_rate"]
+            parts = []
+            if not cpi_fc.empty:
+                cpi_dir = "rising" if cpi_fc["mean"].iloc[-1] > cpi_fc["mean"].iloc[0] else "falling"
+                parts.append(f"CPI {cpi_dir}")
+            if not rate_fc.empty:
+                rate_dir = "rising" if rate_fc["mean"].iloc[-1] > rate_fc["mean"].iloc[0] else "falling"
+                parts.append(f"rates {rate_dir}")
+            if parts:
+                forecast_note = f"**VAR 6m outlook:** {', '.join(parts)}"
+
+    # Latest surprise (if available)
+    surprise_note = ""
+    sp_path = DATA_DIR / "surprises" / "surprise_panel.parquet"
+    if sp_path.exists():
+        sp = pd.read_parquet(sp_path)
+        sp_country = sp[sp["country"] == country].sort_values("date")
+        if not sp_country.empty:
+            last_sp = sp_country.iloc[-1]
+            cpi_s = last_sp.get("cpi_surprise")
+            if pd.notna(cpi_s):
+                direction = "hotter" if cpi_s > 0 else "cooler"
+                surprise_note = f"**Latest CPI surprise:** {cpi_s:+.2f}pp ({direction} than prior)"
+
+    card_md = f"""
+| Metric | Value |
+|--------|-------|
+| **Score** | {score:+.3f} |
+| **Signal confidence** | {confidence:.0%} |
+| **Credit quality** | {credit_q:.2f} |
+| **Regime** | {regime} |
+| **Portfolio weight** | {port_weight} |
+| **Top drivers** | {top_drivers} |
+
+{forecast_note}
+
+{surprise_note}
+"""
+    st.markdown(card_md)
+
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+    # --- Fiscal snapshot table ---
+    st.markdown("### Fiscal snapshot")
+    st.markdown(f'<p class="section-subtitle">World Bank annual data (latest available, forward-filled)</p>',
+                unsafe_allow_html=True)
+
+    from em.country.universe import SOVEREIGN_RATINGS
+
+    fiscal_cols = ["country", "debt_gdp", "fiscal_balance_gdp", "reserves_months",
+                   "credit_quality_score"]
+    available_cols = [c for c in fiscal_cols if c in latest.columns]
+
+    if len(available_cols) > 1:
+        fiscal_table = latest[available_cols].copy()
+        fiscal_table["rating"] = fiscal_table["country"].map(SOVEREIGN_RATINGS).fillna("—")
+
+        rename = {
+            "debt_gdp": "Debt/GDP (%)",
+            "fiscal_balance_gdp": "Fiscal Bal/GDP (%)",
+            "reserves_months": "Reserves (months)",
+            "credit_quality_score": "Quality Score",
+            "rating": "Rating (numeric)",
+        }
+        fiscal_table = fiscal_table.rename(columns=rename)
+        fiscal_table = fiscal_table.set_index("country")
+
+        # Format
+        for col in fiscal_table.columns:
+            fiscal_table[col] = fiscal_table[col].apply(
+                lambda v: f"{v:.1f}" if pd.notna(v) else "—"
+            )
+
+        st.dataframe(fiscal_table, width="stretch")
 
 if __name__ == "__main__":
-    main()
+    st.set_page_config(
+        page_title="EM Sovereign Alpha",
+        page_icon="🌍",
+        layout="wide",
+        initial_sidebar_state="collapsed",
+    )
+
+    inject_css()
+
+    # --- Header ---
+    st.markdown("""
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 4px;">
+        <span style="font-size: 32px;">🌍</span>
+        <div>
+            <h1 style="margin:0; font-size: 28px; letter-spacing: -0.5px;">
+                EM Sovereign Alpha
+            </h1>
+            <p style="margin:0; color: #8B929E; font-size: 14px;">
+                Systematic Emerging Market Sovereign Debt Research Platform
+            </p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="section-divider" style="margin-top:8px;"></div>', unsafe_allow_html=True)
+
+    # --- Tabs ---
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+        "📊 Executive Summary",
+        "🎯 Country Scores",
+        "💼 Portfolio Detail",
+        "🕐 Weekly History",
+        "📈 Market Data & Coverage",
+        "🔮 Macro Forecasts",
+        "⚡ Data Surprises",
+        "📝 Research",
+    ])
+
+    with tab1:
+        render_executive_summary()
+    with tab2:
+        render_scores()
+    with tab3:
+        render_portfolio_detail()
+    with tab4:
+        render_weekly_history()
+    with tab5:
+        with st.container():
+            render_market_data()
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+        render_coverage()
+    with tab6:
+        render_macro_forecasts()
+    with tab7:
+        render_data_surprises()
+    with tab8:
+        render_research()

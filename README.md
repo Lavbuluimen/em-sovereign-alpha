@@ -18,6 +18,11 @@ The project builds a **data pipeline, signal engine, and portfolio construction 
 - [Why Systematic EM Sovereign Investing Can Work](#why-systematic-em-sovereign-investing-can-work)
 - [Strategy Characteristics](#strategy-characteristics)
 - [Model Architecture](#model-architecture)
+  - [Scoring Signals](#scoring-signals)
+  - [Credit Quality Guard](#credit-quality-guard)
+  - [Signal Confidence](#signal-confidence)
+  - [Risk Regime Overlay](#risk-regime-overlay)
+  - [Portfolio Construction Rules](#portfolio-construction-rules)
 - [Data Sources](#data-sources)
 - [Example Portfolio Output](#example-portfolio-output)
 - [Research Workflow](#research-workflow)
@@ -142,75 +147,124 @@ Because signals are updated regularly, the strategy can **respond dynamically to
 | Asset Class | Emerging Market Sovereign Bonds |
 | Instruments | Hard Currency (USD) and Local Currency Bonds |
 | Strategy Type | Systematic Global Macro |
-| Portfolio Structure | Long-only |
-| Benchmark | J.P. Morgan EMBI |
+| Portfolio Structure | Long-only, benchmark-aware |
+| Benchmark | J.P. Morgan EMBI Global Diversified (EMBI-GD) |
 | Universe | 11 countries: Brazil, Mexico, Colombia, Chile, South Africa, Poland, Hungary, Romania, Indonesia, Malaysia, Philippines |
-| Target Tracking Error | ~5% |
-| Rebalancing | Daily signals, weekly to monthly adjustments |
+| Target Tracking Error | ~4% (L2-norm active weight constraint) |
+| Rebalancing | Daily signals, weekly to monthly adjustments (50bp threshold) |
 | Backtest Start | January 2015 |
-| Data Sources | FRED, Stooq, Yahoo Finance (all public, free) |
+| Data Sources | FRED, Stooq, Yahoo Finance, World Bank (all public, free) |
 
 ---
 
 # Model Architecture
 
-The EM Sovereign Alpha framework follows a modular research architecture. The composite score combines five cross-sectional signals, all z-scored relative to the 11-country universe on each date:
+The EM Sovereign Alpha framework follows a modular research architecture. The composite score combines **nine signals** across two layers: seven cross-sectional signals z-scored relative to the 11-country universe, and two global adjustments applied after ranking.
 
-| Signal | Weight | Lookback |
-|------|------|------|------|
-| Sovereign spread vs US 10Y | 25% | Spot |
-| Spread change | 25% | 20 days |
-| Local bond + FX return | 20% | 20 days |
-| 10Y yield change | 15% | 60 days |
-| FX return vs USD | 15% | 20 days |
+## Scoring Signals
 
-Scores are scaled to [−1, +1] and adjusted by a **signal confidence** factor based on data coverage. Countries with signal confidence below 0.5 are flagged as unreliable.
+| Signal | Weight | Lookback | Notes |
+|--------|--------|----------|-------|
+| Spread value (blended TS + CS, quality-guarded) | 15% | 2yr rolling | 50% cross-sectional + 50% per-country time-series z-score; capped for distressed or low-quality credits |
+| Spread momentum (20/60/120d blend) | 15% | 20/60/120d | Weighted blend: 25% short / 50% medium / 25% long horizon |
+| FX carry | 15% | Spot monthly | Local short rate − US short rate; zero for 4 non-OECD countries (no FRED data) |
+| Real yield | 10% | Spot monthly | 10Y nominal yield − trailing CPI; zero for 4 non-OECD countries |
+| Local return (60d) | 10% | 60 days | Cumulative local bond + FX return in USD |
+| FX momentum (60d) | 5% | 60 days | Cumulative FX return vs USD |
+| Commodity terms-of-trade | 10% | 60d Brent return | Country sensitivity × Brent 60d return z-score |
+| **US real rate global tilt** | **15%** | **60d change** | Post-ranking additive tilt — rising US real rates reduce all EM scores uniformly |
+| **Risk regime (VIX / DXY / EM OAS)** | **5%** | **Spot thresholds** | Green: full active risk; Amber: halved; Red: near-zero |
+
+### Credit Quality Guard
+
+The spread value signal is **capped at zero** for any country where:
+- sovereign spread > 700bp, **OR**
+- credit quality composite score < 0.30
+
+The credit quality composite blends four dimensions:
+- **Sovereign rating** (30%) — S&P / Moody's numeric composite
+- **Fiscal balance / GDP** (25%) — World Bank annual series
+- **Debt / GDP** (25%) — World Bank annual series
+- **Reserves / months of imports** (20%) — World Bank annual series
+
+### Signal Confidence
+
+Each country's final score is multiplied by a **signal confidence** factor (0–1) derived from rolling 60-day data coverage across all signals. The four countries with zero FRED CPI/short-rate coverage (Colombia, Romania, Philippines, Malaysia) are capped at ≤0.70, automatically reducing their active tilts.
+
+## Risk Regime Overlay
+
+The allocator classifies each date into one of three regimes using live macro thresholds:
+
+| Regime | VIX | DXY 60d z-score | EM OAS | Max active weight | Duration | Local FX |
+|--------|-----|-----------------|--------|-------------------|----------|----------|
+| Green | < 20 | < 1.0 | < 400bp | 4% | Full | Allowed |
+| Amber | 20–30 | 1.0–2.0 | 400–550bp | 2% | Zero | Disallowed |
+| Red | > 30 | > 2.0 | > 550bp | 0.5% | Zero | Disallowed |
+
+Active weights are also halved within ±3 calendar days of scheduled FOMC meetings.
+
+## Portfolio Construction Rules
+
+- **TE constraint**: active weights are L2-norm scaled so `√Σ(active²) ≤ 4%`
+- **Country caps**: max `2.5× EMBI benchmark weight` or `5%`; floor `0.25× EMBI weight` or `0.5%`
+- **Benchmark**: EMBI Global Diversified index weights (normalized to 11-country universe)
+- **Local currency overlay**: base allocation is 0%; added only when FX carry > 0 AND FX momentum > 0 in Green regime (up to 40% local per country)
+- **Minimum holding period**: 5-day block on active-weight sign reversals
+- **Rebalancing threshold**: 50bp weight change triggers a BUY or SELL signal
+- **Transaction cost model**: 15bp one-way (hard currency), 10bp one-way (local); trades where estimated cost exceeds 50% of weight change are flagged as `HOLD (cost)`
 
 ```
-                ┌─────────────────────┐
-                │  Market Data Layer  │
-                │  FX / Yields / Macro│
-                └─────────┬───────────┘
-                          │
-                          ▼
-                ┌─────────────────────┐
-                │   Country Panel     │
-                │  FX, Yields, Spread │
-                │  Return Proxies     │
-                └─────────┬───────────┘
-                          │
-                          ▼
-                ┌─────────────────────┐
-                │   Signal Engine     │
-                │  Credit Spread      │
-                │  Spread Momentum    │
-                │  Local Bond Return  │
-                │  Rate Trend         │
-                │  FX Momentum        │
-                └─────────┬───────────┘
-                          │
-                          ▼
-                ┌─────────────────────┐
-                │   Country Scores    │
-                │  Cross-Section Rank │
-                │  Normalized Alpha   │
-                └─────────┬───────────┘
-                          │
-                          ▼
-                ┌─────────────────────┐
-                │ Portfolio Allocator │
-                │ Long-Only Weights   │
-                │ Hard vs Local Split │
-                │ Per-Country         │
-                │ Duration Tilt       │
-                └─────────┬───────────┘
-                          │
-                          ▼
-                ┌─────────────────────┐
-                │  Portfolio Outputs  │
-                │ Weekly Actions      │
-                │ Risk & Allocation   │
-                └─────────────────────┘
+                ┌──────────────────────────┐
+                │     Market Data Layer    │
+                │  FX / Yields / Macro /   │
+                │  Commodities / VIX / DXY │
+                └────────────┬─────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────┐
+                │      Country Panel       │
+                │  Yields, Spreads, FX     │
+                │  Real Yield, FX Carry    │
+                │  Fiscal Fundamentals     │  ← World Bank annual data
+                └────────────┬─────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────┐
+                │  9-Signal Score Engine   │
+                │  Spread Value (TS+CS)    │
+                │  Spread Momentum (blend) │
+                │  FX Carry + Real Yield   │
+                │  Local Return + FX Mom   │
+                │  Commodity ToT           │
+                │  ↓ Credit Quality Guard  │
+                │  ↓ Signal Confidence     │
+                └────────────┬─────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────┐
+                │    Global Adjustments    │
+                │  US Real Rate Tilt (15%) │
+                │  Risk Regime Overlay (5%)│
+                └────────────┬─────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────┐
+                │   Portfolio Allocator    │
+                │  EMBI Benchmark Weights  │
+                │  TE Constraint (4%)      │
+                │  Country Caps (2.5×)     │
+                │  Local Overlay (active)  │
+                │  FOMC Calendar Scaling   │
+                │  Min Holding Period (5d) │
+                └────────────┬─────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────┐
+                │     Portfolio Outputs    │
+                │  Weekly Actions (50bp)   │
+                │  TC-Aware Signals        │
+                │  Regime Classification   │
+                └──────────────────────────┘
 ```
 
 ---
@@ -230,6 +284,9 @@ The model relies on publicly available macro and market data.
 | Commodities | Yahoo Finance | Brent (BZ=F), WTI (CL=F), Copper (HG=F), Gold (GC=F) |
 | Volatility | Yahoo Finance | VIX (^VIX) |
 | Dollar Index | FRED | DTWEXEMEGS (Fed broad trade-weighted USD index) |
+| Fiscal Fundamentals | World Bank API (`wbdata`) | Fiscal balance/GDP, Debt/GDP, Reserves/months of imports — annual, forward-filled |
+
+> **Coverage note:** CPI and short-rate series are unavailable on FRED for Colombia, Romania, Philippines, and Malaysia (non-OECD). Real yield and FX carry signals are set to zero for these countries; their `signal_confidence` is capped at ≤0.70.
 
 These datasets are combined into a **daily country panel** and a **global macro panel** used for cross-country scoring and portfolio construction.
 
@@ -314,64 +371,119 @@ and then integrated into the production pipeline.
 
 ## Data Improvements
 
-- local bond index total returns (replace proxy)
-- EMBI country-level spread data
+- local bond index total returns (replace proxy with actual index data)
+- EMBI country-level spread data (replace yield-spread proxy)
 
 ## Risk Model Updates
 
-- covariance estimation
-- volatility estimation
-- factor exposures
-- tracking error calculation
+- full covariance matrix estimation
+- factor exposure decomposition (duration, spread, currency)
+- formal ex-ante tracking error calculation
 
-## Portfolio Optimization
+## Portfolio Optimization (Phase 4)
 
-Move from simplified allocation to optimization:
+Replace heuristic allocation with a formal optimizer:
 
 ```
 maximize alpha
 
 subject to
 
-tracking error ≤ 5%
+tracking error ≤ 4%
 weights ≥ 0
 country caps
 liquidity constraints
+transaction cost penalties
 ```
 
-## Macro Overlay
+## Signal Enhancements
 
-Add regime signals:
-
-- global liquidity
-- dollar cycle
-- commodity cycle
-- volatility regime
-
-## Carry & Value Signals
-
-- integrate real yield and FX carry into the allocator's local/hard currency split
+- current account balance as a carry quality filter
+- political risk / governance overlay
+- local vs external debt ratio as a credit signal
 
 ---
 
 # Improvements
 
-*As of March 2026*
+*As of March 2026 — Phase 1–3 Model Update*
 
-**Scoring & Signals**
-- Replaced CDS data (unavailable at low cost) with an EMBI spread proxy: each country's 10Y yield minus US 10Y yield (`hard_spread_proxy`)
-- Extended yield trend lookback from 20 to 60 days for a cleaner, less noisy rate momentum signal
-- Added signal confidence weighting — scores are scaled by data coverage quality, countries with sparse data are downweighted
+## Phase 1: Critical Fixes
 
-**Carry & Value Panel**
-- Added real yield per country: 10Y nominal yield minus trailing CPI inflation (7 OECD countries with FRED data)
-- Added FX carry per country: local short-term interbank rate minus US short-term rate
-- Added US real yield as a benchmark (US 10Y minus US CPI)
-- Cross-sectional ranks computed for both metrics at pipeline time
-- Dashboard carry & value panel: scatter plot (real yield vs FX carry, bubble = weight, colour = alpha score), real yield bar chart vs US baseline, and full decomposition table
+**Benchmark**
+- Replaced equal-weight benchmark with **EMBI Global Diversified index weights** — portfolio active tilts and country caps are now computed relative to the actual index
 
-**Portfolio Construction**
-- Duration tilt is now **country-specific** — each country's tilt is derived from its own 60-day local yield trend rather than a single global US 10Y proxy
+**Risk Regime Overlay**
+- Added a three-regime framework (Green / Amber / Red) using VIX, DXY 60d z-score, and EM OAS thresholds
+- Active weight limits automatically scale with market stress: 4% in Green, 2% in Amber, 0.5% in Red
+- Duration tilts and local currency allocations are zeroed in Amber and Red regimes
+
+**New Scoring Signals**
+- Added **FX carry** (local short rate − US rate) at 15% weight — the primary income signal for EM sovereign bonds
+- Added **real yield** (10Y nominal − CPI inflation) at 10% weight — a measure of true rate compensation after inflation
+- Added **US real rate global tilt** (15%) — a post-ranking additive adjustment; rising US real rates uniformly reduce all EM scores, reflecting the global risk-off pressure this creates
+
+**Data Coverage**
+- Identified that Colombia, Romania, Philippines, and Malaysia have zero FRED coverage for CPI and short rates
+- Implemented split coverage tracking (`real_yield_coverage_60d`, `fx_carry_coverage_60d`) so each missing signal degrades `signal_confidence` proportionally — these four countries are capped at ≤0.70
+
+**Rebalancing Threshold**
+- Raised weekly action threshold from 25bp to **50bp** to reduce unnecessary turnover and transaction costs
+
+## Phase 2: Signal Enhancement
+
+**Multi-Horizon Spread Momentum**
+- Replaced single 20-day spread change with a **blended 20/60/120d momentum signal** (weights: 25/50/25%) — captures both short-term reversal and medium-term trend
+
+**Time-Series Spread Z-Score**
+- Added a per-country 2-year rolling z-score for the spread level — blended 50/50 with the cross-sectional z-score to distinguish "cheap vs peers" from "cheap vs own history"
+
+**Credit Quality Guard**
+- Added a **credit quality composite score** (0–1) using sovereign ratings (30%), fiscal balance/GDP (25%), debt/GDP (25%), and reserves/months (20%)
+- Positive spread-value contribution is capped at zero when spread > 700bp OR credit quality < 0.30 — prevents value traps in distressed credits
+
+**Commodity Terms-of-Trade**
+- Added a **commodity ToT signal** (10%) using country-specific sensitivity coefficients × Brent 60d return z-score
+- Commodity exporters (Brazil, Colombia, Chile, South Africa, Indonesia) benefit from rallies; importers (Poland, Hungary, Philippines) are penalised
+
+**Extended Lookbacks**
+- Local return and FX momentum extended from 20d to **60d** for a more stable, less noise-sensitive signal
+
+**Winsorized Z-Score**
+- Replaced percentile rank with a **winsorized z-score** (clip ±3, rescale to [−1, 1]) — preserves signal magnitude so a 3σ outlier scores more than a 1σ outlier
+
+**FOMC Calendar Flag**
+- Active weights are scaled by **0.5× within ±3 days of scheduled FOMC meetings** to reduce risk around policy announcements
+
+## Phase 3: Portfolio Construction
+
+**TE Constraint**
+- Added an L2-norm tracking error constraint: active weights are proportionally scaled if `√Σ(active²) > 4%` before per-country clip limits are applied
+
+**Local Currency as Active Overlay**
+- Changed local currency base allocation from 35% → **0%**; local exposure is now added only when FX carry > 0 AND FX momentum > 0 in Green regime (up to 40% local per country)
+- Aligns with EMBI benchmark (hard currency only) — any local exposure is explicitly an active decision
+
+**Transaction Cost Model**
+- Added estimated one-way transaction costs: 15bp hard currency, 10bp local currency
+- Trades where estimated TC exceeds 50% of the weight change are flagged as **HOLD (cost)** in the weekly action report
+
+**Minimum Holding Period**
+- Active-weight sign reversals within 5 business days are blocked — prevents excessive flip-flopping from high-frequency noise
+
+**Country Caps**
+- Per-country weight ceiling: `max(2.5× EMBI weight, 5%)`
+- Per-country floor: `max(0.25× EMBI weight, 0.5%)`
+- Replaced flat long-only floor with benchmark-relative bounds
+
+---
+
+*Earlier improvements (pre-Phase 1)*
+
+- Replaced CDS data (unavailable at low cost) with yield-spread proxy (`hard_spread_proxy` = local 10Y − US 10Y)
+- Added signal confidence weighting — scores scaled by 60-day data coverage per signal
+- Duration tilt made country-specific (derived from each country's own 60-day yield trend)
+- Added carry & value panel to the dashboard: real yield vs FX carry scatter, ranked bar chart, decomposition table
 
 ---
 

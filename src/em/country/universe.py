@@ -132,7 +132,102 @@ SHORT_RATE_FRED: dict[str, str] = {
 # Used as a cross-asset anchor for the EMBI spread proxy model.
 #   BAMLEMCBPIOAS  ICE BofA EM Corporate Plus Index OAS (bp)
 #   BAMLH0A0HYM2   ICE BofA US HY Master II OAS — global risk-off signal (bp)
+# Approximate JP Morgan EMBI Global Diversified weights per country.
+# Raw index weights (not renormalised to our sub-universe).
+EMBI_WEIGHTS: dict[str, float] = {
+    "Brazil":       0.045,
+    "Mexico":       0.050,
+    "Colombia":     0.035,
+    "Chile":        0.020,
+    "South Africa": 0.030,
+    "Poland":       0.025,
+    "Hungary":      0.015,
+    "Romania":      0.020,
+    "Indonesia":    0.045,
+    "Malaysia":     0.035,
+    "Philippines":  0.025,
+}
+
 EMBI_GLOBAL_FRED: dict[str, str] = {
     "em_oas":    "BAMLEMCBPIOAS",
     "us_hy_oas": "BAMLH0A0HYM2",
 }
+
+# ── Commodity sensitivity per country ─────────────────────────────────────────
+# Coefficient in [-1, +1]: positive = net exporter (benefits from commodity rallies),
+# negative = net importer (hurt by commodity rallies).
+# Proxy commodity: Brent crude (primary global pricing signal; correlated with
+# metals/agri cycles that also drive EM sovereign spreads).
+COMMODITY_SENSITIVITY: dict[str, float] = {
+    "Brazil":       +1.0,   # crude oil, iron ore, soybeans, sugar
+    "Mexico":       +0.5,   # oil exporter, but large manufacturing base
+    "Colombia":     +1.0,   # oil ~40% of exports
+    "Chile":        +0.8,   # copper ~50% of exports
+    "South Africa": +0.8,   # gold, platinum, coal
+    "Poland":       -0.5,   # net energy importer
+    "Hungary":      -0.5,   # net energy importer
+    "Romania":      -0.3,   # small domestic oil, net importer overall
+    "Indonesia":    +0.5,   # coal, palm oil, nickel
+    "Malaysia":     +0.5,   # crude oil, LNG, palm oil
+    "Philippines":  -0.3,   # net commodity importer
+}
+
+# ── Sovereign credit rating composite ─────────────────────────────────────────
+# Numeric composite of S&P and Moody's long-term foreign-currency ratings.
+# Scale: AAA=20, AA+=19, AA=18, AA-=17, A+=16, A=15, A-=14,
+#        BBB+=13, BBB=12, BBB-=11, BB+=9, BB=7, BB-=5,
+#        B+=3, B=2, B-=1, CCC+=0 (and below).
+# Averaged across the two agencies; update when ≥1-notch change occurs.
+# Source: S&P Global Ratings / Moody's Investors Service — public ratings, 2026-Q1.
+SOVEREIGN_RATINGS: dict[str, float] = {
+    "Brazil":       5.0,   # S&P BB-, Moody's Ba3
+    "Mexico":       9.0,   # S&P BBB-, Moody's Baa2
+    "Colombia":     7.0,   # S&P BB+, Moody's Ba2
+    "Chile":       14.0,   # S&P A-, Moody's A2
+    "South Africa": 5.0,   # S&P BB-, Moody's Ba2
+    "Poland":      13.0,   # S&P A-, Moody's A2
+    "Hungary":     11.0,   # S&P BBB, Moody's Baa2
+    "Romania":      9.0,   # S&P BBB-, Moody's Baa3
+    "Indonesia":   11.0,   # S&P BBB, Moody's Baa2
+    "Malaysia":    14.0,   # S&P A-, Moody's A3
+    "Philippines": 11.0,   # S&P BBB+, Moody's Baa2
+}
+
+# ── World Bank indicators for fiscal fundamentals ─────────────────────────────
+# Annual series, forward-filled to daily in build_country_panel.py.
+# Fetched via wbdata (pip install wbdata). No API key required.
+FISCAL_WB_INDICATORS: dict[str, str] = {
+    "fiscal_balance_gdp": "GC.BAL.CASH.GD.ZS",  # general govt net lending/borrowing (% GDP)
+    "debt_gdp":           "GC.DOD.TOTL.GD.ZS",  # general govt gross debt (% GDP)
+    "reserves_months":    "FI.RES.TOTL.MO",      # total reserves in months of imports
+}
+
+# ISO 3166-1 alpha-3 codes for the active universe (needed by wbdata).
+COUNTRY_ISO3: dict[str, str] = {
+    "Brazil":       "BRA",
+    "Mexico":       "MEX",
+    "Colombia":     "COL",
+    "Chile":        "CHL",
+    "South Africa": "ZAF",
+    "Poland":       "POL",
+    "Hungary":      "HUN",
+    "Romania":      "ROU",
+    "Indonesia":    "IDN",
+    "Malaysia":     "MYS",
+    "Philippines":  "PHL",
+}
+
+# ── FOMC meeting dates ────────────────────────────────────────────────────────
+# End date of each scheduled 2-day FOMC meeting.
+# Source: federalreserve.gov. Update list at the start of each calendar year.
+FOMC_DATES: list[str] = [
+    # 2024
+    "2024-01-31", "2024-03-20", "2024-05-01", "2024-06-12",
+    "2024-07-31", "2024-09-18", "2024-11-07", "2024-12-18",
+    # 2025
+    "2025-01-29", "2025-03-19", "2025-05-07", "2025-06-18",
+    "2025-07-30", "2025-09-17", "2025-10-29", "2025-12-10",
+    # 2026
+    "2026-01-28", "2026-03-18", "2026-04-29", "2026-06-10",
+    "2026-07-29", "2026-09-16", "2026-10-28", "2026-12-09",
+]

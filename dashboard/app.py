@@ -66,10 +66,30 @@ COLUMN_LABELS: dict[str, str] = {
     "weight":                     "Weight",
     "yield_coverage_60d":         "Yield Coverage (60d)",
     "spread_coverage_60d":        "Spread Coverage (60d)",
-    "credit_proxy_coverage_60d":  "Credit Coverage (60d)",
-    "fx_coverage_60d":            "FX Coverage (60d)",
     "embi_coverage_60d":          "EM Spread Coverage (60d)",
+    "real_yield_coverage_60d":    "Real Yield Coverage (60d)",
+    "fx_carry_coverage_60d":      "FX Carry Coverage (60d)",
     "country":                    "Country",
+    # Phase 1–3 model outputs
+    "regime":                     "Risk Regime",
+    "score_raw":                  "Raw Score",
+    "credit_quality_score":       "Credit Quality Score",
+    "spread_value_blended_z":     "Spread Value Z (Blended)",
+    "spread_mom_blend_z":         "Spread Momentum Z (Blend)",
+    "spread_ts_z":                "Spread TS Z-Score",
+    "spread_20d_chg_z":           "Spread Mom (20d) Z",
+    "spread_60d_chg_z":           "Spread Mom (60d) Z",
+    "spread_120d_chg_z":          "Spread Mom (120d) Z",
+    "real_yield_z":               "Real Yield Z-Score",
+    "fx_carry_z":                 "FX Carry Z-Score",
+    "local_ret_60d_z":            "Local Return (60d) Z",
+    "fx_ret_60d_z":               "FX Return (60d) Z",
+    "commodity_tot_z":            "Commodity ToT Z-Score",
+    "us_real_rate_tilt":          "US Real Rate Tilt",
+    "local_ret_60d":              "Local Return (60d)",
+    "fx_ret_60d":                 "FX Return (60d)",
+    "tc_estimate":                "TC Estimate",
+    "cost_aware_action":          "Cost-Aware Action",
 }
 
 MACRO_LABELS: dict[str, str] = {
@@ -85,6 +105,11 @@ MACRO_LABELS: dict[str, str] = {
     "HG=F":                   "Copper Futures",
     "GC=F":                   "Gold Futures",
     "DTWEXEMEGS":             "USD Trade-Weighted Index",
+    "VIX":                    "VIX (Spot)",
+    "DXY":                    "US Dollar Index (DXY)",
+    "em_oas":                 "EM OAS (BAMLEM)",
+    "Brent":                  "Brent Crude (USD)",
+    "us_real_yield":          "US Real Yield (%)",
 }
 
 PLOTLY_TEMPLATE = "plotly_dark"
@@ -323,7 +348,7 @@ def render_executive_summary():
     hard_total = latest_port["hard_w"].sum()
     local_total = latest_port["local_w"].sum()
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
         metric_card("Countries", str(n_countries), "Active in universe")
     with c2:
@@ -333,6 +358,19 @@ def render_executive_summary():
                      "Short" if avg_duration < 0 else "Long" if avg_duration > 0 else "Neutral")
     with c4:
         metric_card("Hard / Local", f"{hard_total:.0%} / {local_total:.0%}", "Currency split")
+    with c5:
+        if "regime" in latest_port.columns:
+            regime_val = str(latest_port["regime"].iloc[0])
+            regime_color = {"Green": COLORS["green"], "Amber": COLORS["amber"], "Red": COLORS["red"]}.get(regime_val, COLORS["muted"])
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">Risk Regime</div>
+                <div class="metric-value" style="color:{regime_color};">{regime_val}</div>
+                <div class="metric-sub">VIX / DXY / EM OAS</div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            metric_card("Risk Regime", "—", "VIX / DXY / EM OAS")
 
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
@@ -342,9 +380,10 @@ def render_executive_summary():
         st.markdown('<p class="section-subtitle">Recommended portfolio rebalancing actions</p>',
                     unsafe_allow_html=True)
 
-        buys = actions[actions["action"].str.contains("BUY", na=False)].sort_values("w_change", ascending=False)
-        sells = actions[actions["action"].str.contains("SELL", na=False)].sort_values("w_change", ascending=True)
-        holds = actions[actions["action"].str.contains("HOLD", na=False)]
+        action_col = "cost_aware_action" if "cost_aware_action" in actions.columns else "action"
+        buys = actions[actions[action_col].str.contains("BUY", na=False)].sort_values("w_change", ascending=False)
+        sells = actions[actions[action_col].str.contains("SELL", na=False)].sort_values("w_change", ascending=True)
+        holds = actions[actions[action_col].str.contains("HOLD", na=False)]
 
         col_b, col_h, col_s = st.columns(3)
 
@@ -352,10 +391,12 @@ def render_executive_summary():
             st.markdown(f"**🟢 BUY / ADD** ({len(buys)})")
             for _, row in buys.iterrows():
                 chg = row.get("w_change", 0)
+                tc = row.get("tc_estimate", None)
+                tc_str = f' <span style="color:{COLORS["muted"]};font-size:11px;">TC≈{tc*10000:.0f}bp</span>' if pd.notna(tc) and tc else ""
                 st.markdown(
-                    f'{action_badge(row["action"])} &nbsp; **{row["country"]}** '
+                    f'{action_badge(row[action_col])} &nbsp; **{row["country"]}** '
                     f'<span style="color:{COLORS["green"]}; font-family: JetBrains Mono, monospace; font-size:13px;">'
-                    f'+{chg:.1%}</span>',
+                    f'+{chg:.1%}</span>{tc_str}',
                     unsafe_allow_html=True
                 )
 
@@ -363,7 +404,7 @@ def render_executive_summary():
             st.markdown(f"**⚪ HOLD** ({len(holds)})")
             for _, row in holds.iterrows():
                 st.markdown(
-                    f'{action_badge("HOLD")} &nbsp; **{row["country"]}**',
+                    f'{action_badge(row[action_col])} &nbsp; **{row["country"]}**',
                     unsafe_allow_html=True
                 )
 
@@ -371,10 +412,12 @@ def render_executive_summary():
             st.markdown(f"**🔴 SELL / TRIM** ({len(sells)})")
             for _, row in sells.iterrows():
                 chg = row.get("w_change", 0)
+                tc = row.get("tc_estimate", None)
+                tc_str = f' <span style="color:{COLORS["muted"]};font-size:11px;">TC≈{tc*10000:.0f}bp</span>' if pd.notna(tc) and tc else ""
                 st.markdown(
-                    f'{action_badge(row["action"])} &nbsp; **{row["country"]}** '
+                    f'{action_badge(row[action_col])} &nbsp; **{row["country"]}** '
                     f'<span style="color:{COLORS["red"]}; font-family: JetBrains Mono, monospace; font-size:13px;">'
-                    f'{chg:.1%}</span>',
+                    f'{chg:.1%}</span>{tc_str}',
                     unsafe_allow_html=True
                 )
 
@@ -405,13 +448,15 @@ def render_executive_summary():
         bot3 = latest_scores.tail(3).iloc[::-1]
 
         def _performer_narrative(row: pd.Series) -> list[str]:
-            """Return up to 3 plain-English bullets explaining the score drivers."""
+            """Return up to 4 plain-English bullets explaining the score drivers."""
             bullets = []
-            spread = row.get("hard_spread_proxy", None)
-            sp_chg = row.get("embi_spread_20d_chg", None)
-            lr = row.get("local_ret_20d", None)
-            yc = row.get("yield_60d_chg", None)
-            fx = row.get("fx_ret_20d", None)
+            spread      = row.get("hard_spread_proxy", None)
+            sp_mom_z    = row.get("spread_mom_blend_z", None)
+            lr          = row.get("local_ret_60d", None)
+            fx          = row.get("fx_ret_60d", None)
+            fx_carry    = row.get("fx_carry", None)
+            comm_z      = row.get("commodity_tot_z", None)
+            us_tilt     = row.get("us_real_rate_tilt", None)
 
             # Credit risk level
             if pd.notna(spread):
@@ -421,36 +466,49 @@ def render_executive_summary():
                 elif spread < 1.5:
                     bullets.append(f"Sovereign spread is tight at {spread_bps:.0f}bps above US 10Y — low perceived risk")
 
-            # Spread momentum (most important signal at 25%)
-            if pd.notna(sp_chg):
-                sp_chg_bps = sp_chg * 100
-                if sp_chg < -0.20:
-                    bullets.append(f"Spreads tightened {abs(sp_chg_bps):.0f}bps over 20 days — credit conditions improving")
-                elif sp_chg > 0.20:
-                    bullets.append(f"Spreads widened {sp_chg_bps:.0f}bps over 20 days — credit conditions deteriorating")
+            # Spread momentum — blended 20/60/120d z-score (15% weight)
+            if pd.notna(sp_mom_z):
+                if sp_mom_z < -0.3:
+                    bullets.append(f"Spread momentum is negative ({sp_mom_z:+.2f}z) — spreads tightening across 20/60/120d horizons")
+                elif sp_mom_z > 0.3:
+                    bullets.append(f"Spread momentum is positive ({sp_mom_z:+.2f}z) — spreads widening across horizons")
 
-            # Local return (20%)
+            # FX carry (15% weight)
+            if pd.notna(fx_carry):
+                if fx_carry > 2.0:
+                    bullets.append(f"FX carry is attractive at +{fx_carry:.1f}% — local rate meaningfully above US rate")
+                elif fx_carry < -1.0:
+                    bullets.append(f"Negative FX carry ({fx_carry:.1f}%) — local rate below US funding cost")
+
+            # Local return 60d (10% weight)
             if pd.notna(lr):
-                if lr > 0.01:
-                    bullets.append(f"20-day local return is positive (+{lr:.1%}) — bond price and/or currency tailwinds")
-                elif lr < -0.01:
-                    bullets.append(f"20-day local return is negative ({lr:.1%}) — bond or currency losses")
+                if lr > 0.02:
+                    bullets.append(f"60-day local return is positive (+{lr:.1%}) — bond and/or currency tailwinds")
+                elif lr < -0.02:
+                    bullets.append(f"60-day local return is negative ({lr:.1%}) — bond or currency headwinds")
 
-            # Yield change 60d (15%)
-            if pd.notna(yc):
-                if yc < -0.30:
-                    bullets.append(f"10Y yield fell {abs(yc):.1f}pp over 60 days — duration momentum is bullish")
-                elif yc > 0.30:
-                    bullets.append(f"10Y yield rose {yc:.1f}pp over 60 days — duration momentum is bearish")
+            # FX momentum 60d (5% weight)
+            if pd.notna(fx) and not bullets[-1:] or (pd.notna(fx) and len(bullets) < 3):
+                if fx > 0.02:
+                    bullets.append(f"Currency gained {fx:.1%} vs USD over 60 days")
+                elif fx < -0.02:
+                    bullets.append(f"Currency lost {abs(fx):.1%} vs USD over 60 days")
 
-            # FX (15%)
-            if pd.notna(fx):
-                if fx > 0.01:
-                    bullets.append(f"Currency gained {fx:.1%} vs USD over 20 days")
-                elif fx < -0.01:
-                    bullets.append(f"Currency lost {abs(fx):.1%} vs USD over 20 days")
+            # Commodity ToT (10% weight)
+            if pd.notna(comm_z) and len(bullets) < 4:
+                if comm_z > 0.4:
+                    bullets.append(f"Commodity tailwind ({comm_z:+.2f}z) — country benefits from current commodity rally")
+                elif comm_z < -0.4:
+                    bullets.append(f"Commodity headwind ({comm_z:+.2f}z) — country hurt by commodity weakness")
 
-            return bullets[:3] if bullets else ["Insufficient data to generate a narrative."]
+            # US real rate global tilt
+            if pd.notna(us_tilt) and len(bullets) < 4:
+                if us_tilt < -0.05:
+                    bullets.append(f"US real rate rising — global tilt of {us_tilt:+.2f} reduces all EM scores")
+                elif us_tilt > 0.05:
+                    bullets.append(f"US real rate falling — global tilt of {us_tilt:+.2f} supports all EM scores")
+
+            return bullets[:4] if bullets else ["Insufficient data to generate a narrative."]
 
         def _performer_card(row: pd.Series, rank: int, is_top: bool) -> str:
             score_val = row.get("score_adj", 0)
@@ -668,10 +726,13 @@ def render_executive_summary():
         marker_color="#00D26A",
     ))
 
-    bench_w = 1.0 / n_countries
-    fig.add_hline(y=bench_w, line_dash="dot", line_color=COLORS["muted"],
-                  annotation_text=f"Benchmark ({bench_w:.1%})",
-                  annotation_font_color=COLORS["muted"])
+    fig.add_trace(go.Scatter(
+        x=latest_port["country"],
+        y=latest_port["bench_w"],
+        mode="markers",
+        name="EMBI Benchmark",
+        marker=dict(symbol="diamond", size=10, color=COLORS["muted"]),
+    ))
 
     fig.update_layout(
         barmode="stack",
@@ -704,24 +765,31 @@ def render_scores():
         st.markdown("""
 **The Sovereign Alpha Score answers: which EM country looks most attractive for sovereign debt investment right now, relative to its peers?**
 
-It combines 5 signals into a single composite ranking. All signals are z-scored cross-sectionally — meaning each country is ranked against the other countries on the same date, not against its own history.
+It combines 9 signals into a single composite ranking. Cross-sectional signals are z-scored against the 11-country universe on each date. Two global adjustments are applied after the cross-sectional ranking.
 
 | Signal | Weight | What it measures | Direction |
 |---|---|---|---|
-| Spread vs US 10Y | 25% | How wide the country's sovereign spread is | Tighter = better |
-| Spread change (20d) | 25% | Whether spreads are tightening or widening | Tightening = better |
-| Local bond + FX return (20d) | 20% | Recent total return from holding the local bond | Positive = better |
-| 10Y yield change (60d) | 15% | Whether yields are rising or falling | Falling = better |
-| FX return vs USD (20d) | 15% | Whether the local currency is strengthening | Appreciating = better |
+| Spread value (blended TS + CS, quality-guarded) | 15% | Spread vs peers + own 2-year history; capped for distressed credits | Tighter = better |
+| Spread momentum (20/60/120d blend) | 15% | Multi-horizon spread tightening | Tightening = better |
+| FX carry | 15% | Local policy rate minus US rate | Positive carry = better |
+| Real yield | 10% | 10Y yield minus CPI inflation | Higher real yield = better |
+| Local return (60d) | 10% | 60-day total return from local bond in USD | Positive = better |
+| FX momentum (60d) | 5% | 60-day FX return vs USD | Appreciation = better |
+| Commodity terms-of-trade | 10% | Brent 60d return × country export sensitivity | Varies by country |
+| US real rate global tilt | 15% | 60d change in US real rate (same for all countries) | Rising US rates = negative |
+| Risk regime (VIX/DXY/EM OAS) | 5% | Active weight cap: Green 4%, Amber 2%, Red 0.5% | Green = full active risk |
 
 The raw score is then multiplied by a **signal confidence** factor (0–1) based on data availability over the last 60 days. Countries with patchy data are scaled down.
 
-**Three themes the score captures:**
-- **Credit risk** — Is the spread vs US Treasuries tight or wide, and is it improving or worsening?
-- **Rate momentum** — Are local yields trending in a direction that generates bond price gains?
-- **FX momentum** — Is the currency strengthening or weakening against the dollar?
+> **Data coverage note:** FX carry and real yield are always zero for Colombia, Romania, Philippines, and Malaysia — FRED has no CPI or short-rate data for these countries. Their `signal_confidence` is capped at ≤0.70, which automatically reduces their active tilts.
 
-**Important caveats:** The score is relative, not absolute — a +1.0 means best in the current universe, not that EM is broadly attractive. It is not a valuation model and has no macro overlay for global risk-off events.
+**Four themes the score captures:**
+- **Credit value** — Is the spread tight/wide vs peers and own history? Is the credit quality solid enough to warrant the carry?
+- **Momentum** — Are spreads tightening across 20d, 60d, and 120d horizons simultaneously?
+- **Carry & income** — What is the local rate premium and real yield advantage over US Treasuries?
+- **Global context** — Is the macro regime supportive (VIX/DXY/OAS) and is US real rate pressure rising or falling?
+
+**Important caveat:** The score is relative, not absolute — a +1.0 means best in the current universe, not that EM is broadly attractive. A country can score high while EM as a whole is in a Red regime (low active risk allowed).
         """)
 
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
@@ -753,23 +821,36 @@ The raw score is then multiplied by a **signal confidence** factor (0–1) based
                 unsafe_allow_html=True)
 
     decomp_cols = [c for c in [
-        "country", "score", "signal_confidence",
-        "hard_spread_proxy", "y10y", "fx_usd_ret",
-        "credit_risk_proxy", "credit_risk_20d_chg",
-        "embi_spread_proxy", "embi_spread_20d_chg",
-        "local_ret_20d", "fx_ret_20d", "yield_60d_chg",
+        "country", "score", "score_raw", "signal_confidence",
+        "spread_value_blended_z", "spread_mom_blend_z",
+        "fx_carry_z", "real_yield_z",
+        "local_ret_60d_z", "fx_ret_60d_z",
+        "commodity_tot_z", "us_real_rate_tilt",
+        "credit_quality_score",
+        "hard_spread_proxy", "y10y",
     ] if c in latest.columns]
 
     display = latest[decomp_cols].copy().rename(columns=COLUMN_LABELS)
+    z_cols = [COLUMN_LABELS.get(c, c) for c in [
+        "spread_value_blended_z", "spread_mom_blend_z", "fx_carry_z",
+        "real_yield_z", "local_ret_60d_z", "fx_ret_60d_z",
+        "commodity_tot_z", "us_real_rate_tilt",
+    ] if c in latest.columns]
+    fmt = {
+        "Score": "{:+.4f}",
+        "Raw Score": "{:+.4f}",
+        "Signal Confidence": "{:.2f}",
+        "Credit Quality Score": "{:.2f}",
+        "Spread vs US (%)": "{:.2f}",
+        "10Y Yield (%)": "{:.3f}",
+    }
+    fmt.update({col: "{:+.3f}" for col in z_cols if col in display.columns})
     st.dataframe(
-        display.style.format({
-            "Score": "{:+.4f}",
-            "Signal Confidence": "{:.2f}",
-            "Spread vs US (%)": "{:.2f}",
-            "10Y Yield (%)": "{:.3f}",
-            "Daily FX Return": "{:+.4f}",
-        }, na_rep="—").background_gradient(
+        display.style.format(fmt, na_rep="—").background_gradient(
             subset=["Score"], cmap="RdYlGn", vmin=-1, vmax=1
+        ).background_gradient(
+            subset=[c for c in z_cols if c in display.columns],
+            cmap="RdYlGn", vmin=-1, vmax=1,
         ),
         width="stretch",
         hide_index=True,
@@ -833,22 +914,23 @@ def render_portfolio_detail():
                 unsafe_allow_html=True)
 
     # --- Allocation detail table ---
-    display_cols = ["country", "score", "weight", "hard_w", "local_w",
+    display_cols = ["country", "score", "regime", "weight", "hard_w", "local_w",
                     "local_share", "active_w", "bench_w", "duration_tilt_years"]
     display_cols = [c for c in display_cols if c in latest.columns]
     display = latest[display_cols].copy().rename(columns=COLUMN_LABELS)
 
+    fmt = {
+        "Score": "{:+.3f}",
+        "Weight": "{:.1%}",
+        "Hard Currency Wt": "{:.1%}",
+        "Local Currency Wt": "{:.1%}",
+        "Local Share": "{:.0%}",
+        "Active Weight": "{:+.1%}",
+        "Benchmark Wt": "{:.1%}",
+        "Duration Tilt (yrs)": "{:+.2f}",
+    }
     st.dataframe(
-        display.style.format({
-            "Score": "{:+.3f}",
-            "Weight": "{:.1%}",
-            "Hard Currency Wt": "{:.1%}",
-            "Local Currency Wt": "{:.1%}",
-            "Local Share": "{:.0%}",
-            "Active Weight": "{:+.1%}",
-            "Benchmark Wt": "{:.1%}",
-            "Duration Tilt (yrs)": "{:+.2f}",
-        }, na_rep="—").background_gradient(
+        display.style.format(fmt, na_rep="—").background_gradient(
             subset=["Weight"], cmap="Blues", vmin=0
         ),
         width="stretch",
@@ -1088,8 +1170,8 @@ def _build_weekly_snapshots() -> pd.DataFrame | None:
     # Week-over-week weight change
     snap["w_change"] = snap.groupby("country")["weight"].diff()
 
-    # Action labels
-    threshold = 0.0025
+    # Action labels — threshold matches weekly_actions.py (50bp)
+    threshold = 0.0050
     snap["action"] = "HOLD"
     snap.loc[snap["w_change"] >= threshold, "action"] = "BUY / ADD"
     snap.loc[snap["w_change"] <= -threshold, "action"] = "SELL / TRIM"
@@ -1098,9 +1180,10 @@ def _build_weekly_snapshots() -> pd.DataFrame | None:
     if scores is not None and not scores.empty:
         score_cols = ["date", "country", "signal_confidence"]
         # Add any feature columns that exist
-        for c in ["hard_spread_proxy", "y10y", "fx_ret_20d",
-                   "embi_spread_proxy", "embi_spread_20d_chg",
-                   "credit_risk_proxy", "credit_risk_20d_chg"]:
+        for c in ["hard_spread_proxy", "y10y", "fx_ret_60d",
+                   "embi_spread_proxy", "spread_value_blended_z",
+                   "fx_carry", "commodity_tot_z",
+                   "credit_quality_score"]:
             if c in scores.columns:
                 score_cols.append(c)
 
@@ -1167,9 +1250,10 @@ def render_weekly_history():
     # --- Trade signals for this week ---
     st.subheader("Trade Signals")
 
-    buys = week_data[week_data["action"].str.contains("BUY", na=False)].sort_values("w_change", ascending=False)
-    holds = week_data[week_data["action"].str.contains("HOLD", na=False)].sort_values("score", ascending=False)
-    sells = week_data[week_data["action"].str.contains("SELL", na=False)].sort_values("w_change", ascending=True)
+    wh_action_col = "cost_aware_action" if "cost_aware_action" in week_data.columns else "action"
+    buys = week_data[week_data[wh_action_col].str.contains("BUY", na=False)].sort_values("w_change", ascending=False)
+    holds = week_data[week_data[wh_action_col].str.contains("HOLD", na=False)].sort_values("score", ascending=False)
+    sells = week_data[week_data[wh_action_col].str.contains("SELL", na=False)].sort_values("w_change", ascending=True)
 
     col_b, col_h, col_s = st.columns(3)
 
@@ -1180,10 +1264,12 @@ def render_weekly_history():
         for _, row in buys.iterrows():
             chg = row.get("w_change", 0)
             chg_str = f"+{chg:.1%}" if pd.notna(chg) else ""
+            tc = row.get("tc_estimate", None)
+            tc_str = f' <span style="color:{COLORS["muted"]};font-size:11px;">TC≈{tc*10000:.0f}bp</span>' if pd.notna(tc) and tc else ""
             st.markdown(
-                f'{action_badge(row["action"])} &nbsp; **{row["country"]}** '
+                f'{action_badge(row[wh_action_col])} &nbsp; **{row["country"]}** '
                 f'<span style="color:{COLORS["green"]}; font-family: JetBrains Mono, monospace; font-size:13px;">'
-                f'{chg_str}</span>',
+                f'{chg_str}</span>{tc_str}',
                 unsafe_allow_html=True
             )
 
@@ -1193,7 +1279,7 @@ def render_weekly_history():
             st.markdown(f'<span style="color:{COLORS["muted"]}">None</span>', unsafe_allow_html=True)
         for _, row in holds.iterrows():
             st.markdown(
-                f'{action_badge("HOLD")} &nbsp; **{row["country"]}**',
+                f'{action_badge(row[wh_action_col])} &nbsp; **{row["country"]}**',
                 unsafe_allow_html=True
             )
 
@@ -1204,10 +1290,12 @@ def render_weekly_history():
         for _, row in sells.iterrows():
             chg = row.get("w_change", 0)
             chg_str = f"{chg:.1%}" if pd.notna(chg) else ""
+            tc = row.get("tc_estimate", None)
+            tc_str = f' <span style="color:{COLORS["muted"]};font-size:11px;">TC≈{tc*10000:.0f}bp</span>' if pd.notna(tc) and tc else ""
             st.markdown(
-                f'{action_badge(row["action"])} &nbsp; **{row["country"]}** '
+                f'{action_badge(row[wh_action_col])} &nbsp; **{row["country"]}** '
                 f'<span style="color:{COLORS["red"]}; font-family: JetBrains Mono, monospace; font-size:13px;">'
-                f'{chg_str}</span>',
+                f'{chg_str}</span>{tc_str}',
                 unsafe_allow_html=True
             )
 
@@ -1290,7 +1378,8 @@ def render_weekly_history():
 
     week_sorted = week_data.sort_values("weight", ascending=False)
     table_cols = [c for c in [
-        "country", "score", "weight", "w_change", "action",
+        "country", "score", "regime", "weight", "w_change",
+        "action", "cost_aware_action", "tc_estimate",
         "hard_w", "local_w", "local_share", "duration_tilt_years",
     ] if c in week_sorted.columns]
 
@@ -1303,6 +1392,7 @@ def render_weekly_history():
             "Local Currency Wt": "{:.1%}",
             "Local Share": "{:.0%}",
             "Duration Tilt (yrs)": "{:+.2f}",
+            "TC Estimate": "{:.4f}",
         }, na_rep="—").background_gradient(
             subset=["Score"], cmap="RdYlGn", vmin=-1, vmax=1
         ),
@@ -1325,12 +1415,15 @@ def render_weekly_history():
         marker_color="#00D26A",
     ))
 
-    n_countries = len(week_sorted)
-    if n_countries > 0:
-        bench = 1.0 / n_countries
-        fig.add_hline(y=bench, line_dash="dot", line_color=COLORS["muted"],
-                      annotation_text=f"Benchmark ({bench:.1%})",
-                      annotation_font_color=COLORS["muted"])
+    # EMBI benchmark markers (replaces stale equal-weight flat line)
+    if "bench_w" in week_sorted.columns:
+        fig.add_trace(go.Scatter(
+            x=week_sorted["country"],
+            y=week_sorted["bench_w"],
+            mode="markers",
+            name="EMBI Benchmark",
+            marker=dict(symbol="diamond", size=10, color=COLORS["muted"]),
+        ))
 
     fig.update_layout(
         barmode="stack",
@@ -1411,7 +1504,7 @@ def render_coverage():
 
         key_cols = [c for c in [
             "y10y", "fx_usd_ret", "hard_spread_proxy", "local_ret_proxy_usd",
-            "embi_spread_proxy", "credit_risk_proxy",
+            "embi_spread_proxy", "real_yield", "fx_carry",
         ] if c in panel.columns]
 
         if key_cols:
@@ -1449,9 +1542,9 @@ def render_coverage():
 
         conf_cols = [c for c in [
             "country", "signal_confidence",
-            "yield_coverage_60d", "spread_coverage_60d",
-            "credit_proxy_coverage_60d", "fx_coverage_60d",
-            "embi_coverage_60d",
+            "yield_coverage_60d", "spread_coverage_60d", "embi_coverage_60d",
+            "real_yield_coverage_60d",
+            "fx_carry_coverage_60d",
         ] if c in latest.columns]
 
         if conf_cols:

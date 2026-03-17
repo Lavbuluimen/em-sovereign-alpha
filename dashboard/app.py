@@ -372,6 +372,62 @@ def render_executive_summary():
         else:
             metric_card("Risk Regime", "—", "VIX / DXY / EM OAS")
 
+    # --- Risk Regime Sparklines ---
+    _macro_spark = load_parquet("global_macro_daily.parquet")
+    if _macro_spark is not None and not _macro_spark.empty:
+        _mp_full = _macro_spark.sort_values("date").copy()
+        if "DXY" in _mp_full.columns:
+            _dxy_chg = _mp_full["DXY"].diff(60)
+            _dxy_mu  = _dxy_chg.rolling(252, min_periods=60).mean()
+            _dxy_sd  = _dxy_chg.rolling(252, min_periods=60).std().replace(0, float("nan"))
+            _mp_full["_dxy_z"] = (_dxy_chg - _dxy_mu) / _dxy_sd
+        _cutoff90 = latest_date - pd.Timedelta(days=90)
+        _mp90 = _mp_full[_mp_full["date"] >= _cutoff90].copy()
+
+        _spark_specs = [
+            ("VIX",    "VIX",            "VIX Level",  20.0,  30.0),
+            ("_dxy_z", "DXY 60d Z-Score","Z-Score",     1.0,   2.0),
+            ("em_oas", "EM OAS",          "OAS (bp)",  400.0, 550.0),
+        ]
+        _spark_specs = [s for s in _spark_specs if s[0] in _mp90.columns and _mp90[s[0]].notna().any()]
+
+        if _spark_specs:
+            st.subheader("Risk Regime Inputs")
+            _scols = st.columns(len(_spark_specs))
+            for _cw, (col_nm, title, ylab, lo, hi) in zip(_scols, _spark_specs):
+                with _cw:
+                    _s = _mp90[["date", col_nm]].dropna()
+                    if _s.empty:
+                        continue
+                    _cur = float(_s[col_nm].iloc[-1])
+                    _rc = COLORS["green"] if _cur < lo else COLORS["amber"] if _cur < hi else COLORS["red"]
+                    _ylo = min(_s[col_nm].min() * 1.05, lo * 0.5 if lo > 0 else lo * 1.5)
+                    _yhi = max(_s[col_nm].max() * 1.05, hi * 1.3)
+                    _fig_s = go.Figure()
+                    _fig_s.add_hrect(y0=_ylo, y1=lo,  fillcolor="rgba(0,210,106,0.10)",  line_width=0)
+                    _fig_s.add_hrect(y0=lo,   y1=hi,  fillcolor="rgba(255,179,71,0.10)", line_width=0)
+                    _fig_s.add_hrect(y0=hi,   y1=_yhi, fillcolor="rgba(255,75,75,0.10)", line_width=0)
+                    _fig_s.add_hline(y=lo, line_dash="dot", line_color=COLORS["amber"], line_width=1)
+                    _fig_s.add_hline(y=hi, line_dash="dot", line_color=COLORS["red"],   line_width=1)
+                    _fig_s.add_trace(go.Scatter(
+                        x=_s["date"], y=_s[col_nm], mode="lines",
+                        line=dict(color=_rc, width=2), showlegend=False,
+                    ))
+                    _fig_s.update_layout(
+                        title=f"{title}  <b>{_cur:.2f}</b>",
+                        height=220, yaxis_title=ylab,
+                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                        font=dict(family="DM Sans, sans-serif", color=COLORS["text"], size=11),
+                        margin=dict(l=35, r=10, t=45, b=30),
+                        xaxis=dict(gridcolor="#2D3139"), yaxis=dict(gridcolor="#2D3139"),
+                    )
+                    st.plotly_chart(_fig_s, use_container_width=True)
+            st.caption(
+                "90-day trend of the three risk regime inputs. Shaded green/amber/red bands show "
+                "the classification thresholds — any single reading in the amber band halves active risk; "
+                "any reading in the red band cuts active risk to near-zero."
+            )
+
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
     # --- Weekly actions summary ---
@@ -815,6 +871,122 @@ The raw score is then multiplied by a **signal confidence** factor (0–1) based
     fig.update_yaxes(autorange="reversed")
     st.plotly_chart(fig, width="stretch")
 
+    # --- Factor Attribution (Score Waterfall) ---
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    st.subheader("Factor Attribution")
+    _sig_specs = [
+        ("spread_value_blended_z",  0.15,  "Spread Value",    True),
+        ("spread_mom_blend_z",      0.15,  "Spread Momentum", False),
+        ("fx_carry_z",              0.15,  "FX Carry",        True),
+        ("real_yield_z",            0.10,  "Real Yield",      True),
+        ("local_ret_60d_z",         0.10,  "Local Return",    True),
+        ("fx_ret_60d_z",            0.05,  "FX Momentum",     True),
+        ("commodity_tot_z",         0.10,  "Commodity ToT",   True),
+        ("us_real_rate_tilt",       1.00,  "US Rate Tilt",    True),
+    ]
+    _sig_avail = [(c, w, lbl, pos) for c, w, lbl, pos in _sig_specs if c in latest.columns]
+    if _sig_avail:
+        _factor_df = latest[["country"]].copy()
+        for col, w, lbl, pos in _sig_avail:
+            _factor_df[lbl] = (latest[col].fillna(0.0) * w if pos else -latest[col].fillna(0.0) * w).values
+        _attr_palette = ["#4DA3FF","#FF8C42","#00D26A","#B39DDB","#4DD0E1","#F48FB1","#AED581","#FFD54F"]
+        _wfall = go.Figure()
+        for (_, _, lbl, _), color in zip(_sig_avail, _attr_palette):
+            _vals = _factor_df[lbl]
+            _wfall.add_trace(go.Bar(
+                name=lbl, x=_vals, y=_factor_df["country"], orientation="h",
+                marker_color=[color if v >= 0 else "rgba(255,75,75,0.65)" for v in _vals],
+                hovertemplate=f"<b>%{{y}}</b><br>{lbl}: %{{x:+.3f}}<extra></extra>",
+            ))
+        _wfall.add_vline(x=0, line_color=COLORS["muted"], line_width=1)
+        _wfall.update_yaxes(autorange="reversed")
+        _wfall.update_layout(
+            barmode="relative",
+            title="Weighted Signal Contributions to Raw Score",
+            xaxis_title="Weighted Contribution",
+            height=max(380, len(latest) * 40),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=11)),
+            **PLOTLY_LAYOUT,
+        )
+        st.plotly_chart(_wfall, width="stretch")
+        st.caption(
+            "Each segment shows one signal's weighted contribution to the country's raw score. "
+            "Positive segments (right of zero) boost the score; negative segments reduce it. "
+            "The total bar length approximates score_raw before signal confidence scaling."
+        )
+
+    # --- Score Conviction Map (Signal Confidence vs Score Scatter) ---
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    st.subheader("Score Conviction Map")
+    if "signal_confidence" in latest.columns:
+        _conf_colors = [score_bar_color(s) for s in latest["score"]]
+        _conf_fig = go.Figure()
+        _conf_fig.add_trace(go.Scatter(
+            x=latest["score"], y=latest["signal_confidence"],
+            mode="markers+text", text=latest["country"],
+            textposition="top center", textfont=dict(size=11, color=COLORS["text"]),
+            marker=dict(size=14, color=_conf_colors, line=dict(width=1, color=COLORS["border"])),
+            hovertemplate="<b>%{text}</b><br>Score: %{x:+.3f}<br>Confidence: %{y:.2f}<extra></extra>",
+        ))
+        _conf_fig.add_vline(x=0, line_dash="dot", line_color=COLORS["muted"], line_width=1)
+        _conf_fig.add_hline(y=0.5, line_dash="dot", line_color=COLORS["amber"], line_width=1,
+                             annotation_text="0.5 reliability threshold",
+                             annotation_font_color=COLORS["amber"], annotation_font_size=10)
+        _conf_fig.update_layout(
+            title="Score vs Signal Confidence",
+            xaxis_title="Composite Score", yaxis_title="Signal Confidence (0–1)",
+            height=380, **PLOTLY_LAYOUT,
+        )
+        st.plotly_chart(_conf_fig, width="stretch")
+        st.caption(
+            "Top-right quadrant (high score, high confidence) = strong conviction longs. "
+            "Top-left (positive score, low confidence) = data is thin — treat with caution. "
+            "The amber dashed line marks 0.5; below it scores are significantly discounted by the signal confidence multiplier."
+        )
+
+    # --- Cross-Sectional Z-Score Dot Strip ---
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    st.subheader("Cross-Sectional Z-Score Distribution")
+    _strip_sigs = [
+        ("spread_value_blended_z", "Spread Value"),
+        ("spread_mom_blend_z",     "Spread Momentum"),
+        ("fx_carry_z",             "FX Carry"),
+        ("real_yield_z",           "Real Yield"),
+        ("local_ret_60d_z",        "Local Return (60d)"),
+        ("fx_ret_60d_z",           "FX Momentum (60d)"),
+        ("commodity_tot_z",        "Commodity ToT"),
+    ]
+    _strip_avail = [(c, l) for c, l in _strip_sigs if c in latest.columns]
+    if _strip_avail:
+        _strip_fig = go.Figure()
+        for col_nm, sig_label in _strip_avail:
+            _z_vals = latest[col_nm].fillna(0.0).values
+            _ctries = latest["country"].values
+            _abbrevs = [c[:3] for c in _ctries]
+            _dot_clrs = [COLORS["green"] if z > 0 else COLORS["red"] for z in _z_vals]
+            _strip_fig.add_trace(go.Scatter(
+                x=_z_vals, y=[sig_label] * len(_z_vals),
+                mode="markers+text", text=_abbrevs,
+                textposition="top center", textfont=dict(size=9, color=COLORS["muted"]),
+                marker=dict(size=12, color=_dot_clrs, opacity=0.85,
+                            line=dict(width=1, color=COLORS["border"])),
+                showlegend=False, customdata=_ctries,
+                hovertemplate=f"<b>%{{customdata}}</b><br>{sig_label}: %{{x:+.3f}}<extra></extra>",
+            ))
+        _strip_fig.add_vline(x=0, line_color=COLORS["muted"], line_width=1)
+        _strip_fig.update_layout(
+            title="Where Each Country Sits on Each Signal Today",
+            xaxis_title="Z-Score (cross-sectional, current date)",
+            height=max(400, len(_strip_avail) * 72),
+            **PLOTLY_LAYOUT,
+        )
+        st.plotly_chart(_strip_fig, width="stretch")
+        st.caption(
+            "Each dot is one country's z-score on that signal relative to all 11 countries today. "
+            "Green = above the cross-sectional mean; red = below. "
+            "A dot far to the right means the country is an outlier-high on that dimension versus its peers."
+        )
+
     # --- Score decomposition table ---
     st.subheader("Score Components")
     st.markdown('<p class="section-subtitle">Signal breakdown by feature z-score</p>',
@@ -910,6 +1082,15 @@ def render_portfolio_detail():
     latest_date = portfolio["date"].max()
     latest = portfolio[portfolio["date"] == latest_date].sort_values("weight", ascending=False)
 
+    # Merge fx_carry and fx_ret_20d from the country panel (not present in portfolio parquet)
+    _cp = load_parquet("country_daily.parquet")
+    if _cp is not None and not _cp.empty:
+        _cp_latest_date = _cp["date"].max()
+        _cp_snap = _cp[_cp["date"] == _cp_latest_date]
+        _carry_merge_cols = [c for c in ["country", "fx_carry", "fx_ret_20d"] if c in _cp_snap.columns]
+        if len(_carry_merge_cols) > 1:
+            latest = latest.merge(_cp_snap[_carry_merge_cols], on="country", how="left")
+
     st.markdown(f'<p class="section-subtitle">Detailed allocation breakdown as of {latest_date.strftime("%B %d, %Y")}</p>',
                 unsafe_allow_html=True)
 
@@ -980,6 +1161,92 @@ def render_portfolio_detail():
                 **PLOTLY_LAYOUT,
             )
             st.plotly_chart(fig, width="stretch")
+
+    # --- Butterfly Chart: Portfolio vs Benchmark ---
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    st.subheader("Portfolio vs Benchmark Deviation")
+    if "bench_w" in latest.columns and "weight" in latest.columns:
+        _but_df = latest[["country", "bench_w", "weight", "score"]].sort_values("bench_w", ascending=True)
+        _but_clrs = [score_bar_color(s) for s in _but_df["score"]]
+        _but_fig = go.Figure()
+        _but_fig.add_trace(go.Bar(
+            name="EMBI Benchmark",
+            x=-_but_df["bench_w"], y=_but_df["country"], orientation="h",
+            marker_color="#4DA3FF", opacity=0.80,
+            text=_but_df["bench_w"].apply(lambda v: f"−{v:.1%}"),
+            textposition="inside", textfont=dict(size=11, family="JetBrains Mono"),
+            customdata=_but_df["bench_w"],
+            hovertemplate="<b>%{y}</b><br>EMBI Benchmark: %{customdata:.1%}<extra></extra>",
+        ))
+        _but_fig.add_trace(go.Bar(
+            name="Portfolio Weight",
+            x=_but_df["weight"], y=_but_df["country"], orientation="h",
+            marker_color=_but_clrs, opacity=0.85,
+            text=_but_df["weight"].apply(lambda v: f"{v:.1%}"),
+            textposition="inside", textfont=dict(size=11, family="JetBrains Mono"),
+            hovertemplate="<b>%{y}</b><br>Portfolio Weight: %{x:.1%}<extra></extra>",
+        ))
+        _but_fig.add_vline(x=0, line_color=COLORS["text"], line_width=1.5)
+        _but_fig.update_layout(
+            barmode="overlay",
+            title="EMBI Benchmark (left, blue) vs Portfolio Weight (right, score-coloured)",
+            xaxis_title="Weight", xaxis_tickformat=".1%",
+            height=max(380, len(_but_df) * 42),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            **PLOTLY_LAYOUT,
+        )
+        st.plotly_chart(_but_fig, width="stretch")
+        st.caption(
+            "Left bars (blue) show each country's EMBI benchmark weight mirrored left from the centre axis. "
+            "Right bars show the portfolio weight, coloured green/amber/red by alpha score. "
+            "The gap between a country's two bars is the active tilt — wider gap means more conviction relative to the index."
+        )
+
+    # --- Local Allocation Gating Scatter ---
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    st.subheader("Local Allocation Gating")
+    if "local_share" in latest.columns and "fx_carry" in latest.columns:
+        _loc = latest[["country", "local_share", "fx_carry"]].copy()
+        _has_fxret = "fx_ret_20d" in latest.columns
+        _loc["_fx_ret20"] = latest["fx_ret_20d"].fillna(0.0) if _has_fxret else 0.0
+        _loc_sizes = (_loc["local_share"].fillna(0) * 800 + 8).clip(8, 60)
+        _loc_clrs = [
+            COLORS["green"] if (row["fx_carry"] or 0) > 0 and (row["_fx_ret20"] or 0) > 0
+            else COLORS["red"]
+            for _, row in _loc.iterrows()
+        ]
+        _loc_fig = go.Figure()
+        _loc_fig.add_trace(go.Scatter(
+            x=_loc["fx_carry"].fillna(0),
+            y=_loc["_fx_ret20"].fillna(0),
+            mode="markers+text", text=_loc["country"],
+            textposition="top center", textfont=dict(size=11, color=COLORS["text"]),
+            marker=dict(size=_loc_sizes, color=_loc_clrs, opacity=0.80,
+                        line=dict(width=1, color=COLORS["border"])),
+            customdata=_loc["local_share"].fillna(0),
+            hovertemplate=(
+                "<b>%{text}</b><br>FX Carry: %{x:.1f}%<br>"
+                "FX Return (20d): %{y:.2%}<br>Local Share: %{customdata:.0%}<extra></extra>"
+            ),
+        ))
+        _loc_fig.add_vline(x=0, line_dash="dot", line_color=COLORS["muted"], line_width=1,
+                            annotation_text="carry threshold", annotation_font_color=COLORS["muted"],
+                            annotation_font_size=10)
+        _loc_fig.add_hline(y=0, line_dash="dot", line_color=COLORS["muted"], line_width=1,
+                            annotation_text="FX momentum threshold", annotation_font_color=COLORS["muted"],
+                            annotation_font_size=10)
+        _loc_fig.update_layout(
+            title="FX Carry vs FX Return (20d)  —  bubble size = local currency allocation",
+            xaxis_title="FX Carry — local rate minus US rate (%)",
+            yaxis_title="FX Return (20d)", yaxis_tickformat=".1%",
+            height=420, **PLOTLY_LAYOUT,
+        )
+        st.plotly_chart(_loc_fig, width="stretch")
+        st.caption(
+            "Countries in the top-right quadrant (positive carry AND positive FX momentum) are eligible "
+            "for local currency allocation — the model gates local exposure on both conditions simultaneously. "
+            "Bubble size reflects the resulting local share; only top-right countries should have nonzero bubbles."
+        )
 
     # --- Weight history ---
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)

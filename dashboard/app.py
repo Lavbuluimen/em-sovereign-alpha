@@ -1832,6 +1832,22 @@ def render_coverage():
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+def _check_password() -> bool:
+    """Return True if the user entered the correct password."""
+    pwd = st.text_input("Password", type="password", key="auth_password")
+    if not pwd:
+        return False
+    try:
+        correct = st.secrets["PASSWORD"]
+    except (KeyError, FileNotFoundError):
+        st.error("No PASSWORD set in .streamlit/secrets.toml")
+        return False
+    if pwd == correct:
+        return True
+    st.error("Incorrect password")
+    return False
+
+
 def main():
     st.set_page_config(
         page_title="EM Sovereign Alpha",
@@ -1839,6 +1855,9 @@ def main():
         layout="wide",
         initial_sidebar_state="collapsed",
     )
+
+    if not _check_password():
+        st.stop()
 
     inject_css()
 

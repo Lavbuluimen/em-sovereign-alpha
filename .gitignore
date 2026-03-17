@@ -28,3 +28,6 @@ data/backtests/
 # Reports
 reports/*
 !reports/.gitkeep
+
+# Streamlit secrets (never commit)
+.streamlit/secrets.toml

@@ -3,20 +3,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-<<<<<<< HEAD
-from em.country.universe import EMBI_WEIGHTS
-
-
-def embi_benchmark(countries: list[str]) -> pd.Series:
-    raw = pd.Series(
-        [EMBI_WEIGHTS.get(c, 0.0) for c in countries],
-        index=countries, dtype=float,
-    )
-    total = raw.sum()
-    if total > 0:
-        raw = raw / total
-    return raw
-=======
 from em.country.universe import EMBI_WEIGHTS, FOMC_DATES
 
 
@@ -26,7 +12,6 @@ def embi_benchmark(countries: list[str]) -> pd.Series:
         index=countries,
         dtype=float,
     )
->>>>>>> d90f7c056e43fb7b829cee0178e656b9375dbbf9
 
 
 def active_from_scores(scores: pd.Series) -> pd.Series:

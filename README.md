@@ -479,6 +479,7 @@ transaction cost penalties
 - Replaced flat long-only floor with benchmark-relative bounds
 
 ## Phase 4: Research Analytics
+**Still Making Improvements to These Features**
 
 **VAR Macro Forecasting (`src/em/models/macro_forecast.py`)**
 - Added a per-country **Vector Autoregression (VAR)** model fitted on monthly CPI, short-term rate, and FX data

@@ -136,3 +136,21 @@ EMBI_GLOBAL_FRED: dict[str, str] = {
     "em_oas":    "BAMLEMCBPIOAS",
     "us_hy_oas": "BAMLH0A0HYM2",
 }
+
+# J.P. Morgan EMBI Global Diversified index weights (approximate, as of early 2026).
+# Source: JPMorgan index factsheets. Sum of raw weights ≈ 0.345 (11-country sub-universe);
+# allocator.py normalises these to sum to 1.0 within the active universe.
+# Update when index rebalances materially (>1pp change on any country).
+EMBI_WEIGHTS: dict[str, float] = {
+    "Brazil":       0.0640,
+    "Mexico":       0.0600,
+    "Colombia":     0.0270,
+    "Chile":        0.0120,
+    "South Africa": 0.0200,
+    "Poland":       0.0160,
+    "Hungary":      0.0100,
+    "Romania":      0.0130,
+    "Indonesia":    0.0480,
+    "Malaysia":     0.0290,
+    "Philippines":  0.0360,
+}

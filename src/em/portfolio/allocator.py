@@ -3,9 +3,18 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from em.country.universe import EMBI_WEIGHTS
 
-def equal_weight_benchmark(countries: list[str]) -> pd.Series:
-    return pd.Series(1.0 / len(countries), index=countries, dtype=float)
+
+def embi_benchmark(countries: list[str]) -> pd.Series:
+    raw = pd.Series(
+        [EMBI_WEIGHTS.get(c, 0.0) for c in countries],
+        index=countries, dtype=float,
+    )
+    total = raw.sum()
+    if total > 0:
+        raw = raw / total
+    return raw
 
 
 def active_from_scores(scores: pd.Series) -> pd.Series:
@@ -33,7 +42,7 @@ def allocate_daily(
 
     for dt, g in df.groupby("date"):
         countries = g["country"].tolist()
-        bench = equal_weight_benchmark(countries)
+        bench = embi_benchmark(countries)
 
         scores = pd.Series(g["score"].values, index=countries, dtype=float)
         active = active_from_scores(scores)

@@ -352,6 +352,8 @@ The dashboard visualizes:
 - week-over-week score and signal history
 - global macro context (rates, spreads, commodities, VIX)
 - data coverage diagnostics per country
+- VAR-based macro forecasts with confidence bands, impulse response functions, and Granger causality tables
+- macro data surprise analysis: CPI and rate surprises vs naive forecast, surprise-to-FX/spread predictive regressions, and country-by-month heatmap
 
 ---
 
@@ -475,6 +477,24 @@ transaction cost penalties
 - Per-country weight ceiling: `max(2.5× EMBI weight, 5%)`
 - Per-country floor: `max(0.25× EMBI weight, 0.5%)`
 - Replaced flat long-only floor with benchmark-relative bounds
+
+## Phase 4: Research Analytics
+
+**VAR Macro Forecasting (`src/em/models/macro_forecast.py`)**
+- Added a per-country **Vector Autoregression (VAR)** model fitted on monthly CPI, short-term rate, and FX data
+- Produces h-step-ahead forecasts with 68% and 95% confidence bands, impulse response functions (IRF), and a Granger causality p-value matrix
+- Lag order selected by AIC/BIC; variables are automatically differenced if ADF unit-root test fails
+- Outputs saved to `data/processed/macro_forecasts/` as parquet; run via `run/run_macro_forecast.py`
+
+**Data Surprise Analysis (`src/em/features/surprise.py`)**
+- Added a macro surprise engine computing monthly **CPI and rate surprises** (actual minus random-walk naive forecast) for each country
+- Runs a panel regression of surprises against 5-day forward FX returns and spread changes to test predictive power
+- Outputs a country-by-month surprise heatmap and regression coefficient table
+
+**New Dashboard Tabs (8-tab layout)**
+- **Macro Forecasts tab**: per-country VAR forecast charts, IRF grid, and Granger causality heatmap
+- **Data Surprises tab**: CPI/rate surprise heatmap, regime breakdown, and predictive regression results
+- **Research tab**: persistent markdown research notes panel
 
 ---
 

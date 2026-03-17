@@ -5,7 +5,9 @@ from pathlib import Path
 import pandas as pd
 
 from em.country.universe import (
+    COUNTRY_ISO3,
     CPI_YOY_FRED,
+    FISCAL_WB_INDICATORS,
     FX_TICKERS,
     GLOBAL_MACRO_FRED,
     GLOBAL_MACRO_YAHOO,
@@ -15,6 +17,7 @@ from em.country.universe import (
 from em.data.embi import build_embi_spread_panel
 from em.data.fred import fetch_many_fred_series
 from em.data.sovereign import build_country_daily_panel, build_global_macro_panel
+from em.data.worldbank import fetch_worldbank_panel
 
 
 def _merge_monthly_fred(
@@ -106,6 +109,27 @@ def main() -> None:
     )
     country_panel["us_real_yield"] = country_panel["us10y"] - country_panel["us_cpi_yoy"]
 
+    # ── Fiscal fundamentals from World Bank ───────────────────────────────────
+    # Annual series (fiscal_balance_gdp, debt_gdp, reserves_months).
+    # Forward-filled within each country group to produce a daily panel.
+    # Falls back gracefully (NaN columns) if wbdata is not installed.
+    wb_panel = fetch_worldbank_panel(
+        FISCAL_WB_INDICATORS,
+        COUNTRY_ISO3,
+        start_year=2010,
+    )
+    if not wb_panel.empty:
+        country_panel = country_panel.merge(
+            wb_panel, on=["date", "country"], how="left"
+        )
+        for col in FISCAL_WB_INDICATORS:
+            country_panel[col] = country_panel.groupby("country")[col].transform(
+                lambda x: x.ffill()
+            )
+    else:
+        for col in FISCAL_WB_INDICATORS:
+            country_panel[col] = float("nan")
+
     # Cross-sectional ranks (1 = best) among countries with data on each date
     country_panel["real_yield_rank"] = (
         country_panel.groupby("date")["real_yield"]
@@ -145,8 +169,11 @@ def main() -> None:
     print("Missing fx count:",              int(country_panel["fx_level_local_per_usd"].isna().sum()))
     print("Missing cpi_yoy count:",         int(country_panel["cpi_yoy"].isna().sum()))
     print("Missing local_short_rate count:", int(country_panel["local_short_rate"].isna().sum()))
-    print("Missing real_yield count:",      int(country_panel["real_yield"].isna().sum()))
-    print("Missing fx_carry count:",        int(country_panel["fx_carry"].isna().sum()))
+    print("Missing real_yield count:",         int(country_panel["real_yield"].isna().sum()))
+    print("Missing fx_carry count:",           int(country_panel["fx_carry"].isna().sum()))
+    print("Missing fiscal_balance_gdp count:", int(country_panel["fiscal_balance_gdp"].isna().sum()))
+    print("Missing debt_gdp count:",           int(country_panel["debt_gdp"].isna().sum()))
+    print("Missing reserves_months count:",    int(country_panel["reserves_months"].isna().sum()))
 
 
 if __name__ == "__main__":

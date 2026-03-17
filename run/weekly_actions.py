@@ -5,6 +5,12 @@ from pathlib import Path
 import pandas as pd
 
 
+# Round-trip transaction cost estimates for EM sovereign bonds.
+# Applied proportionally to the size of each weight change.
+_TC_HARD_ONE_WAY  = 0.0015   # 15 bp one-way — hard-currency benchmark bonds
+_TC_LOCAL_ONE_WAY = 0.0010   # 10 bp one-way — liquid local-currency bonds
+
+
 def main() -> None:
     port = pd.read_parquet("data/processed/portfolio_daily.parquet")
     port["date"] = pd.to_datetime(port["date"])
@@ -24,11 +30,29 @@ def main() -> None:
     last_dt = snap["date"].max()
     cur = snap[snap["date"] == last_dt].copy()
 
-    threshold = 0.0025  # 25 bps
+    # Phase 1.5: threshold raised from 25 bp to 50 bp
+    threshold = 0.0050  # 50 bps
+
     cur["action"] = "HOLD"
-    cur.loc[cur["w_change"] >= threshold, "action"] = "BUY / ADD"
+    cur.loc[cur["w_change"] >= threshold,  "action"] = "BUY / ADD"
     cur.loc[cur["w_change"] <= -threshold, "action"] = "SELL / TRIM"
     cur["trade_size_hint"] = cur["w_change"].fillna(0.0)
+
+    # Phase 3.3: transaction cost model
+    # Estimate one-way cost as a fraction of the total position being traded.
+    # cost = |w_change| / weight × (hard_pct × TC_HARD + local_pct × TC_LOCAL)
+    total_w = cur["weight"].abs().replace(0, float("nan"))
+    hard_pct  = (cur["hard_w"]  / total_w).fillna(0.0).clip(0.0, 1.0)
+    local_pct = (cur["local_w"] / total_w).fillna(0.0).clip(0.0, 1.0)
+    blended_tc = hard_pct * _TC_HARD_ONE_WAY + local_pct * _TC_LOCAL_ONE_WAY
+    cur["tc_estimate"] = (cur["w_change"].abs() * blended_tc).fillna(0.0)
+
+    # Flag trades where the estimated cost exceeds half the weight change —
+    # a rough signal that alpha may not cover execution cost.
+    cur["cost_aware_action"] = cur["action"]
+    marginal_threshold = cur["w_change"].abs() * 0.5
+    high_cost = (cur["action"] != "HOLD") & (cur["tc_estimate"] > marginal_threshold)
+    cur.loc[high_cost, "cost_aware_action"] = "HOLD (cost)"
 
     cur = cur.sort_values("trade_size_hint", ascending=False)
 
@@ -41,14 +65,18 @@ def main() -> None:
     cols = [
         "country",
         "action",
+        "cost_aware_action",
         "weight",
         "w_change",
+        "tc_estimate",
         "hard_w",
         "local_w",
         "local_share",
         "duration_tilt_years",
+        "regime",
     ]
-    print(cur[cols].to_string(index=False))
+    available = [c for c in cols if c in cur.columns]
+    print(cur[available].to_string(index=False))
 
 
 if __name__ == "__main__":

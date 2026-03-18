@@ -14,11 +14,16 @@ __pycache__/
 # macOS
 .DS_Store
 
-# Data (do not commit generated data)
+# Data (do not commit raw data, but commit processed outputs for deployment)
 data/raw/*
-data/processed/*
 !data/raw/.gitkeep
+data/processed/*
 !data/processed/.gitkeep
+!data/processed/*.parquet
+!data/processed/macro_forecasts/
+!data/processed/macro_forecasts/**
+!data/processed/surprises/
+!data/processed/surprises/**
 
 # Research artifacts
 data/features/

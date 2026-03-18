@@ -1,0 +1,11 @@
+{
+  "country": "Chile",
+  "lag_order": 4,
+  "aic": 2.7704609344598325,
+  "bic": 3.630721269596507,
+  "variables": [
+    "cpi_yoy",
+    "local_short_rate",
+    "fx_level_local_per_usd"
+  ]
+}

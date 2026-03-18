@@ -1,0 +1,11 @@
+{
+  "country": "South Africa",
+  "lag_order": 1,
+  "aic": -5.706249191153997,
+  "bic": -5.445465811164065,
+  "variables": [
+    "cpi_yoy",
+    "local_short_rate",
+    "fx_level_local_per_usd"
+  ]
+}

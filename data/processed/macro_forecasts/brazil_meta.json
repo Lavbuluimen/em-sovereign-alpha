@@ -1,8 +1,8 @@
 {
   "country": "Brazil",
   "lag_order": 3,
-  "aic": -6.513560958109372,
-  "bic": -5.85511882302514,
+  "aic": -6.514674369169808,
+  "bic": -5.856232234085575,
   "variables": [
     "cpi_yoy",
     "local_short_rate",

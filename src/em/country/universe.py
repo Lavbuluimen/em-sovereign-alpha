@@ -195,14 +195,17 @@ SOVEREIGN_RATINGS: dict[str, float] = {
     "Philippines": 11.0,   # S&P BBB+, Moody's Baa2
 }
 
-# ── World Bank indicators for fiscal fundamentals ─────────────────────────────
-# Annual series, forward-filled to daily in build_country_panel.py.
-# Fetched via wbdata (pip install wbdata). No API key required.
+# ── World Bank indicators ─────────────────────────────────────────────────────
+# reserves_months only — fiscal_balance_gdp and debt_gdp come from IMF WEO
+# (broader country coverage). Annual series, forward-filled to daily.
 FISCAL_WB_INDICATORS: dict[str, str] = {
-    "fiscal_balance_gdp": "GC.NLD.TOTL.GD.ZS",   # general govt net lending/borrowing (% GDP)
-    "debt_gdp":           "GC.DOD.TOTL.GD.ZS",  # general govt gross debt (% GDP)
-    "reserves_months":    "FI.RES.TOTL.MO",      # total reserves in months of imports
+    "reserves_months": "FI.RES.TOTL.MO",  # total reserves in months of imports
 }
+
+# ── IMF WEO indicators ────────────────────────────────────────────────────────
+# Fetched via the `weo` library (pip install weo). No API key required.
+# Covers all 11 universe countries; World Bank GC.DOD.TOTL.GD.ZS misses several.
+IMF_WEO_FISCAL_COLS: tuple[str, ...] = ("fiscal_balance_gdp", "debt_gdp")
 
 # ISO 3166-1 alpha-3 codes for the active universe (needed by wbdata).
 COUNTRY_ISO3: dict[str, str] = {

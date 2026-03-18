@@ -11,11 +11,13 @@ from em.country.universe import (
     FX_TICKERS,
     GLOBAL_MACRO_FRED,
     GLOBAL_MACRO_YAHOO,
+    IMF_WEO_FISCAL_COLS,
     SHORT_RATE_FRED,
     YIELD10Y_STOOQ,
 )
 from em.data.embi import build_embi_spread_panel
 from em.data.fred import fetch_many_fred_series
+from em.data.imf import fetch_imf_weo_panel
 from em.data.sovereign import build_country_daily_panel, build_global_macro_panel
 from em.data.worldbank import fetch_worldbank_panel
 
@@ -109,19 +111,24 @@ def main() -> None:
     )
     country_panel["us_real_yield"] = country_panel["us10y"] - country_panel["us_cpi_yoy"]
 
-    # ── Fiscal fundamentals from World Bank ───────────────────────────────────
-    # Annual series (fiscal_balance_gdp, debt_gdp, reserves_months).
-    # Forward-filled within each country group to produce a daily panel.
-    # Falls back gracefully (NaN columns) if wbdata is not installed.
-    wb_panel = fetch_worldbank_panel(
-        FISCAL_WB_INDICATORS,
-        COUNTRY_ISO3,
-        start_year=2010,
-    )
+    # ── Fiscal fundamentals: IMF WEO (debt, fiscal balance) ──────────────────
+    # Covers all 11 countries; World Bank GC.DOD.TOTL.GD.ZS misses several.
+    # Annual series, forward-filled within each country group to daily.
+    imf_panel = fetch_imf_weo_panel(COUNTRY_ISO3, start_year=2010)
+    if not imf_panel.empty:
+        country_panel = country_panel.merge(imf_panel, on=["date", "country"], how="left")
+        for col in IMF_WEO_FISCAL_COLS:
+            country_panel[col] = country_panel.groupby("country")[col].transform(
+                lambda x: x.ffill()
+            )
+    else:
+        for col in IMF_WEO_FISCAL_COLS:
+            country_panel[col] = float("nan")
+
+    # ── Reserves from World Bank (IMF WEO does not carry this series) ─────────
+    wb_panel = fetch_worldbank_panel(FISCAL_WB_INDICATORS, COUNTRY_ISO3, start_year=2010)
     if not wb_panel.empty:
-        country_panel = country_panel.merge(
-            wb_panel, on=["date", "country"], how="left"
-        )
+        country_panel = country_panel.merge(wb_panel, on=["date", "country"], how="left")
         for col in FISCAL_WB_INDICATORS:
             country_panel[col] = country_panel.groupby("country")[col].transform(
                 lambda x: x.ffill()

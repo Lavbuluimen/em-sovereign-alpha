@@ -20,7 +20,7 @@ import streamlit as st
 # ---------------------------------------------------------------------------
 # Config & styling
 # ---------------------------------------------------------------------------
-DATA_DIR = Path("data/processed")
+DATA_DIR = Path(__file__).parent.parent / "data" / "processed"
 
 # Colour palette — dark professional theme
 COLORS = {

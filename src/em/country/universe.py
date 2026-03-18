@@ -207,6 +207,17 @@ FISCAL_WB_INDICATORS: dict[str, str] = {
 # Covers all 11 universe countries; World Bank GC.DOD.TOTL.GD.ZS misses several.
 IMF_WEO_FISCAL_COLS: tuple[str, ...] = ("fiscal_balance_gdp", "debt_gdp")
 
+# ── IMF IFS countries ─────────────────────────────────────────────────────────
+# Countries missing CPI and short-rate coverage on FRED (non-OECD).
+# Fetched via IMF IFS SDMX JSON API. No API key required.
+# ISO 3166-1 alpha-2 codes as used by the IMF SDMX service.
+IFS_COUNTRIES: dict[str, str] = {
+    "Colombia":    "CO",
+    "Malaysia":    "MY",
+    "Philippines": "PH",
+    "Romania":     "RO",
+}
+
 # ISO 3166-1 alpha-3 codes for the active universe (needed by wbdata).
 COUNTRY_ISO3: dict[str, str] = {
     "Brazil":       "BRA",

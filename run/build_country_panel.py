@@ -11,12 +11,14 @@ from em.country.universe import (
     FX_TICKERS,
     GLOBAL_MACRO_FRED,
     GLOBAL_MACRO_YAHOO,
+    IFS_COUNTRIES,
     IMF_WEO_FISCAL_COLS,
     SHORT_RATE_FRED,
     YIELD10Y_STOOQ,
 )
 from em.data.embi import build_embi_spread_panel
 from em.data.fred import fetch_many_fred_series
+from em.data.ifs import fetch_ifs_panel
 from em.data.imf import fetch_imf_weo_panel
 from em.data.sovereign import build_country_daily_panel, build_global_macro_panel
 from em.data.worldbank import fetch_worldbank_panel
@@ -103,6 +105,25 @@ def main() -> None:
             country_panel["us_cpi_yoy"] = country_panel["date"].map(us_cpi_daily)
         else:
             country_panel["us_cpi_yoy"] = float("nan")
+
+    # ── IMF IFS: fill CPI and short rate for non-OECD countries ──────────────
+    # Colombia, Malaysia, Philippines, Romania have no FRED coverage.
+    # Fetch from IMF IFS SDMX API and fill NaN rows only (FRED takes precedence).
+    ifs_panel = fetch_ifs_panel(IFS_COUNTRIES, start="2014-01-01")
+    if not ifs_panel.empty:
+        bday_idx = pd.bdate_range(
+            start=country_panel["date"].min(), end=country_panel["date"].max()
+        )
+        for col in ("cpi_yoy", "local_short_rate"):
+            for country_name, iso2 in IFS_COUNTRIES.items():
+                country_ifs = ifs_panel[ifs_panel["country"] == country_name][["date", col]].copy()
+                if country_ifs.empty or country_ifs[col].isna().all():
+                    continue
+                country_ifs = country_ifs.set_index("date")[col]
+                country_ifs.index = pd.DatetimeIndex(country_ifs.index)
+                daily = country_ifs.reindex(bday_idx).ffill()
+                mask = (country_panel["country"] == country_name) & country_panel[col].isna()
+                country_panel.loc[mask, col] = country_panel.loc[mask, "date"].map(daily)
 
     # Derived carry / value features
     country_panel["real_yield"] = country_panel["y10y"] - country_panel["cpi_yoy"]

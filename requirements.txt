@@ -14,3 +14,4 @@ matplotlib
 statsmodels
 wbdata
 weo
+requests

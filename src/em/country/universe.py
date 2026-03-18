@@ -199,7 +199,7 @@ SOVEREIGN_RATINGS: dict[str, float] = {
 # Annual series, forward-filled to daily in build_country_panel.py.
 # Fetched via wbdata (pip install wbdata). No API key required.
 FISCAL_WB_INDICATORS: dict[str, str] = {
-    "fiscal_balance_gdp": "GC.BAL.CASH.GD.ZS",  # general govt net lending/borrowing (% GDP)
+    "fiscal_balance_gdp": "GC.NLD.TOTL.GD.ZS",   # general govt net lending/borrowing (% GDP)
     "debt_gdp":           "GC.DOD.TOTL.GD.ZS",  # general govt gross debt (% GDP)
     "reserves_months":    "FI.RES.TOTL.MO",      # total reserves in months of imports
 }

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime
 import warnings
 
 import pandas as pd
@@ -17,12 +16,12 @@ def fetch_worldbank_panel(
     ----------
     indicators:
         Mapping of {column_name: World Bank indicator code}.
-        Example: {"fiscal_balance_gdp": "GC.BAL.CASH.GD.ZS"}
+        Example: {"fiscal_balance_gdp": "GC.NLD.TOTL.GD.ZS"}
     countries_iso3:
         Mapping of {country_name: ISO 3166-1 alpha-3 code}.
         Example: {"Brazil": "BRA"}
     start_year:
-        First year to request. Data is returned from Jan 1 of this year.
+        First year to include. Rows before this year are dropped.
 
     Returns
     -------
@@ -43,51 +42,34 @@ def fetch_worldbank_panel(
         )
         return pd.DataFrame(columns=["date", "country"] + list(indicators.keys()))
 
-    iso3_to_name = {v: k for k, v in countries_iso3.items()}
     iso3_list = list(countries_iso3.values())
+    wb_codes = {wb_code: col_name for col_name, wb_code in indicators.items()}
 
-    start_dt = datetime.datetime(start_year, 1, 1)
-    end_dt   = datetime.datetime(datetime.date.today().year, 12, 31)
-
-    rows: list[dict] = []
-    for col_name, wb_code in indicators.items():
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                raw = wbdata.get_dataframe(
-                    {wb_code: col_name},
-                    country=iso3_list,
-                    date=(start_dt, end_dt),
-                    convert_date=True,
-                )
-        except Exception:
-            continue
-
-        if raw is None or raw.empty:
-            continue
-
-        # wbdata returns MultiIndex (country, date) or single-level; normalise
-        if isinstance(raw.index, pd.MultiIndex):
-            raw = raw.reset_index()
-            raw.columns = [c.lower() for c in raw.columns]
-            # columns: country, date, col_name
-            raw["country"] = raw["country"].map(
-                lambda x: iso3_to_name.get(x, x)
-            )
-        else:
-            raw = raw.reset_index()
-            raw.columns = [c.lower() for c in raw.columns]
-
-        rows.append(raw[["date", "country", col_name]])
-
-    if not rows:
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            raw = wbdata.get_dataframe(wb_codes, country=iso3_list)
+    except Exception as exc:
+        warnings.warn(f"World Bank fetch failed: {exc}", stacklevel=2)
         return pd.DataFrame(columns=["date", "country"] + list(indicators.keys()))
 
-    # Merge all indicator frames on [date, country]
-    merged = rows[0]
-    for frame in rows[1:]:
-        merged = merged.merge(frame, on=["date", "country"], how="outer")
+    if raw is None or raw.empty:
+        return pd.DataFrame(columns=["date", "country"] + list(indicators.keys()))
 
-    merged["date"] = pd.to_datetime(merged["date"])
-    merged = merged.sort_values(["country", "date"]).reset_index(drop=True)
-    return merged
+    # wbdata 1.1+ returns MultiIndex (country, date) with string year labels
+    raw = raw.reset_index()
+    raw.columns = [c.lower() for c in raw.columns]
+
+    # Convert string year ("2023") → Timestamp (Jan 1 of that year)
+    raw["date"] = pd.to_datetime(raw["date"].astype(str) + "-01-01", errors="coerce")
+    raw = raw.dropna(subset=["date"])
+    raw = raw[raw["date"].dt.year >= start_year]
+
+    # Rename columns to our internal names
+    raw = raw.rename(columns=wb_codes)
+
+    col_order = ["date", "country"] + list(indicators.keys())
+    raw = raw[[c for c in col_order if c in raw.columns]]
+
+    raw = raw.sort_values(["country", "date"]).reset_index(drop=True)
+    return raw

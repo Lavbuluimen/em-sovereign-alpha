@@ -46,7 +46,7 @@ Unlike traditional discretionary approaches to emerging market debt, the framewo
 
 # Investment Philosophy
 
-Emerging market sovereign returns are driven by several key forces:
+Emerging market sovereign returns are driven by several key factors:
 
 - Global liquidity conditions
 - Commodity cycles
@@ -56,7 +56,7 @@ Emerging market sovereign returns are driven by several key forces:
 
 These drivers often lead to **mispriced assets** in sovereign bond markets.
 
-The strategy seeks to take advantage of these mispricing opportunites through a **disciplined cross-sectional ranking process** that allocates capital toward countries offering the most attractive risk-adjusted opportunities.
+This strategy seeks to take advantage of these mispricing opportunites through a **disciplined cross-sectional ranking process** that allocates capital toward countries offering the most attractive risk-adjusted opportunities.
 
 ---
 
@@ -72,13 +72,13 @@ These characteristics provide opportunities for a systematic framework to identi
 
 ## Structural Limitations
 
-### Information Dispersion
+### Lack of Information
 
 Emerging markets often have **less consistent data availability and analyst coverage** than developed markets. As a result, macroeconomic developments and policy shifts may not be immediately reflected in sovereign bond prices. Systematic models can incorporate a wide range of macro signals to capture these dynamics sooner rather than later.
 
 ---
 
-### Heterogeneous Macro Cycles
+### Differing Macro Cycles
 
 Emerging market economies frequently operate in **different stages of the economic cycle**.
 
@@ -94,7 +94,7 @@ This dispersion creates **cross-country opportunities** for active allocation.
 
 ### Currency and Local Rate Dynamics
 
-Returns in EM sovereign debt are driven by multiple components:
+Returns in EM sovereign debt are driven by multiple factors:
 
 - sovereign credit spreads
 - local interest rate movements
@@ -153,7 +153,7 @@ Because signals are updated regularly, the strategy can **respond dynamically to
 | Target Tracking Error | ~4% (L2-norm active weight constraint) |
 | Rebalancing | Daily signals, weekly to monthly adjustments (50bp threshold) |
 | Backtest Start | January 2015 |
-| Data Sources | FRED, Stooq, Yahoo Finance, World Bank (all public, free) |
+| Data Sources | FRED, Stooq, Yahoo Finance, World Bank, IMF (all public, free) |
 
 ---
 
@@ -189,7 +189,7 @@ The credit quality composite blends four dimensions:
 
 ### Signal Confidence
 
-Each country's final score is multiplied by a **signal confidence** factor (0–1) derived from rolling 60-day data coverage across all signals. The four countries with zero FRED CPI/short-rate coverage (Colombia, Romania, Philippines, Malaysia) are capped at ≤0.70, automatically reducing their active tilts.
+Each country's final score is multiplied by a **signal confidence** factor (0–1) derived from rolling 60-day data coverage across all signals. CPI and short-rate data for Colombia, Romania, Philippines, and Malaysia — previously unavailable on FRED — are now sourced from the IMF IFS API, enabling real yield and FX carry signals for all 11 countries.
 
 ## Risk Regime Overlay
 
@@ -279,14 +279,17 @@ The model relies on publicly available macro and market data.
 | US Treasury Yields | FRED | DGS10 (10Y), DGS2 (2Y) |
 | 10Y Government Bond Yields | Stooq (daily) | Per-country tickers (e.g. 10YBRY.B for Brazil) |
 | CPI Inflation (YoY) | FRED / OECD | CPALTT01{CC}M659N — 7 OECD countries + US |
+| CPI Inflation — non-OECD | IMF IFS SDMX API (`ifs.py`) | PCPI_IX → YoY % — Colombia, Malaysia, Philippines, Romania |
 | Short-Term Interest Rates | FRED / OECD | IRSTCI01{CC}M156N — 7 OECD countries + US |
+| Short-Term Rates — non-OECD | IMF IFS SDMX API (`ifs.py`) | FIMM_PA / FPOLM_PA / FIDR_PA — Colombia, Malaysia, Philippines, Romania |
 | EM Credit Spreads | FRED (ICE BofA) | BAMLEMCBPIOAS (EM OAS), BAMLEMHBHYCRPIOAS (EM HY OAS), BAMLH0A0HYM2 (US HY OAS) |
 | Commodities | Yahoo Finance | Brent (BZ=F), WTI (CL=F), Copper (HG=F), Gold (GC=F) |
 | Volatility | Yahoo Finance | VIX (^VIX) |
 | Dollar Index | FRED | DTWEXEMEGS (Fed broad trade-weighted USD index) |
-| Fiscal Fundamentals | World Bank API (`wbdata`) | Fiscal balance/GDP, Debt/GDP, Reserves/months of imports — annual, forward-filled |
+| Fiscal Balance / Debt | IMF WEO (`weo` library) | Fiscal balance/GDP, Debt/GDP — all 11 countries, annual, forward-filled |
+| Reserves | World Bank API (`wbdata`) | Reserves/months of imports (FI.RES.TOTL.MO) — annual, forward-filled |
 
-> **Coverage note:** CPI and short-rate series are unavailable on FRED for Colombia, Romania, Philippines, and Malaysia (non-OECD). Real yield and FX carry signals are set to zero for these countries; their `signal_confidence` is capped at ≤0.70.
+> **Coverage note:** CPI and short-rate series are unavailable on FRED for Colombia, Romania, Philippines, and Malaysia (non-OECD). These are now sourced from the **IMF IFS SDMX JSON API** (`src/em/data/ifs.py`) and merged into the panel, with FRED data taking precedence where available. Real yield and FX carry are computed for all 11 countries. Fiscal balance and debt/GDP previously sourced from World Bank are now fetched from the **IMF WEO** dataset via the `weo` library, which provides broader country coverage; World Bank is retained only for reserves/months of imports.
 
 These datasets are combined into a **daily country panel** and a **global macro panel** used for cross-country scoring and portfolio construction.
 
@@ -496,6 +499,20 @@ transaction cost penalties
 - **Macro Forecasts tab**: per-country VAR forecast charts, IRF grid, and Granger causality heatmap
 - **Data Surprises tab**: CPI/rate surprise heatmap, regime breakdown, and predictive regression results
 - **Research tab**: persistent markdown research notes panel
+
+## Phase 5: Data Coverage Expansion
+
+**IMF IFS Integration for Non-OECD Countries (`src/em/data/ifs.py`)**
+- Added a new data module that fetches **CPI and short-term interest rate series** for Colombia, Malaysia, Philippines, and Romania from the **IMF IFS SDMX JSON REST API** — no API key required
+- CPI index (`PCPI_IX`) is retrieved monthly and converted to YoY % change; short-term rates try `FIMM_PA` (money market), `FPOLM_PA` (policy rate), and `FIDR_PA` (deposit rate) in priority order
+- IFS data fills NaN rows in the country panel only — FRED series take precedence where available
+- Real yield and FX carry are now computed for all 11 universe countries; no country is forced to zero for these signals due to data gaps
+
+**IMF WEO for Fiscal Fundamentals (`src/em/data/imf.py`)**
+- Added a new module that fetches **fiscal balance/GDP and gross debt/GDP** from the **IMF World Economic Outlook** dataset via the `weo` Python library (no API key required)
+- Replaces the previous World Bank `GC.NLD.TOTL.GD.ZS` / `GC.DOD.TOTL.GD.ZS` series, which had incomplete coverage for several universe countries
+- World Bank (`wbdata`) is now used exclusively for **reserves/months of imports** (`FI.RES.TOTL.MO`), where its coverage is reliable
+- WEO data is annual, cached locally, and forward-filled to daily business-day frequency in the panel
 
 ---
 

@@ -1,8 +1,8 @@
 {
   "country": "Chile",
   "lag_order": 4,
-  "aic": 2.772182836789916,
-  "bic": 3.6324431719265906,
+  "aic": 2.786837127163619,
+  "bic": 3.6470974623002936,
   "variables": [
     "cpi_yoy",
     "local_short_rate",

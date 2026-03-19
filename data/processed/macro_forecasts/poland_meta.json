@@ -1,8 +1,8 @@
 {
   "country": "Poland",
   "lag_order": 2,
-  "aic": -7.892958726054603,
-  "bic": -7.434331147461317,
+  "aic": -7.894483216413571,
+  "bic": -7.435855637820285,
   "variables": [
     "cpi_yoy",
     "local_short_rate",

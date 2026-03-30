@@ -1,8 +1,8 @@
 {
   "country": "Hungary",
   "lag_order": 6,
-  "aic": 3.1284930586255086,
-  "bic": 4.398537785527213,
+  "aic": 3.141946100499302,
+  "bic": 4.411990827401007,
   "variables": [
     "cpi_yoy",
     "local_short_rate",

@@ -16,9 +16,9 @@ from em.country.universe import (
     SHORT_RATE_FRED,
     YIELD10Y_STOOQ,
 )
+from em.data.bis import fetch_bis_policy_rates
 from em.data.embi import build_embi_spread_panel
 from em.data.fred import fetch_many_fred_series
-from em.data.ifs import fetch_ifs_panel
 from em.data.imf import fetch_imf_weo_panel
 from em.data.sovereign import build_country_daily_panel, build_global_macro_panel
 from em.data.worldbank import fetch_worldbank_panel
@@ -106,24 +106,43 @@ def main() -> None:
         else:
             country_panel["us_cpi_yoy"] = float("nan")
 
-    # ── IMF IFS: fill CPI and short rate for non-OECD countries ──────────────
-    # Colombia, Malaysia, Philippines, Romania have no FRED coverage.
-    # Fetch from IMF IFS SDMX API and fill NaN rows only (FRED takes precedence).
-    ifs_panel = fetch_ifs_panel(IFS_COUNTRIES, start="2014-01-01")
-    if not ifs_panel.empty:
-        bday_idx = pd.bdate_range(
-            start=country_panel["date"].min(), end=country_panel["date"].max()
-        )
-        for col in ("cpi_yoy", "local_short_rate"):
-            for country_name, iso2 in IFS_COUNTRIES.items():
-                country_ifs = ifs_panel[ifs_panel["country"] == country_name][["date", col]].copy()
-                if country_ifs.empty or country_ifs[col].isna().all():
-                    continue
-                country_ifs = country_ifs.set_index("date")[col]
-                country_ifs.index = pd.DatetimeIndex(country_ifs.index)
-                daily = country_ifs.reindex(bday_idx).ffill()
-                mask = (country_panel["country"] == country_name) & country_panel[col].isna()
-                country_panel.loc[mask, col] = country_panel.loc[mask, "date"].map(daily)
+    # ── BIS + World Bank: fill CPI and short rate for non-OECD countries ────
+    # Colombia, Malaysia, Philippines, Romania have no FRED/OECD coverage.
+    # BIS provides monthly central bank policy rates; World Bank provides annual CPI.
+    # Both fill NaN rows only (FRED takes precedence).
+    bday_idx = pd.bdate_range(
+        start=country_panel["date"].min(), end=country_panel["date"].max()
+    )
+
+    # Short-term rate — BIS central bank policy rates (monthly)
+    bis_panel = fetch_bis_policy_rates(IFS_COUNTRIES, start="2014-01-01")
+    if not bis_panel.empty:
+        for country_name in IFS_COUNTRIES:
+            country_bis = bis_panel[bis_panel["country"] == country_name][["date", "local_short_rate"]].copy()
+            if country_bis.empty or country_bis["local_short_rate"].isna().all():
+                continue
+            series = country_bis.set_index("date")["local_short_rate"]
+            series.index = pd.DatetimeIndex(series.index)
+            daily = series.reindex(bday_idx).ffill()
+            mask = (country_panel["country"] == country_name) & country_panel["local_short_rate"].isna()
+            country_panel.loc[mask, "local_short_rate"] = country_panel.loc[mask, "date"].map(daily)
+
+    # CPI YoY — World Bank FP.CPI.TOTL.ZG (annual %, forward-filled within year)
+    wb_cpi_panel = fetch_worldbank_panel(
+        {"cpi_yoy": "FP.CPI.TOTL.ZG"},
+        {k: v for k, v in COUNTRY_ISO3.items() if k in IFS_COUNTRIES},
+        start_year=2013,
+    )
+    if not wb_cpi_panel.empty:
+        for country_name in IFS_COUNTRIES:
+            country_cpi = wb_cpi_panel[wb_cpi_panel["country"] == country_name][["date", "cpi_yoy"]].copy()
+            if country_cpi.empty or country_cpi["cpi_yoy"].isna().all():
+                continue
+            series = country_cpi.set_index("date")["cpi_yoy"]
+            series.index = pd.DatetimeIndex(series.index)
+            daily = series.reindex(bday_idx).ffill()
+            mask = (country_panel["country"] == country_name) & country_panel["cpi_yoy"].isna()
+            country_panel.loc[mask, "cpi_yoy"] = country_panel.loc[mask, "date"].map(daily)
 
     # Derived carry / value features
     country_panel["real_yield"] = country_panel["y10y"] - country_panel["cpi_yoy"]

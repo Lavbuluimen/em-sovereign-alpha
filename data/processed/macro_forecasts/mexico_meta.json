@@ -1,8 +1,8 @@
 {
   "country": "Mexico",
   "lag_order": 3,
-  "aic": -6.051407184734976,
-  "bic": -5.392965049650743,
+  "aic": -6.0476487103283825,
+  "bic": -5.38920657524415,
   "variables": [
     "cpi_yoy",
     "local_short_rate",

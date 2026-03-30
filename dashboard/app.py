@@ -693,7 +693,7 @@ def render_executive_summary():
             with col_bar:
                 # Bar chart: real yield ranked, with US real yield baseline
                 bar_data = cv_data.sort_values("real_yield", ascending=True)
-                us_real_yield = cv_data["us_real_yield"].iloc[0] if "us_real_yield" in cv_data.columns else None
+                us_real_yield = cv_data["us_real_yield"].iloc[0] if "us_real_yield" in cv_data.columns and not cv_data.empty else None
 
                 bar_colors = [
                     COLORS["green"] if v > (us_real_yield or 0) else COLORS["red"]

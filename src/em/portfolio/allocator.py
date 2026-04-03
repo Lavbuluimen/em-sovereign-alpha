@@ -101,6 +101,13 @@ def allocate_daily(
         mp["date"] = pd.to_datetime(mp["date"])
         mp = mp.sort_values("date").set_index("date")
 
+        # Forward-fill macro panel to cover any dates in scored that are newer
+        # (e.g. scored has T+1 but macro only published through T — use last known value)
+        scores_max_date = df["date"].max()
+        if scores_max_date > mp.index.max():
+            extra_dates = pd.bdate_range(mp.index.max() + pd.offsets.BDay(1), scores_max_date)
+            mp = mp.reindex(mp.index.union(extra_dates)).ffill()
+
         if "DXY" in mp.columns:
             dxy = mp["DXY"].dropna()
             dxy_60d_z = (
@@ -113,7 +120,9 @@ def allocate_daily(
             vix_map = mp["VIX"].fillna(20.0).to_dict()
 
         if "em_oas" in mp.columns:
-            oas_map = mp["em_oas"].fillna(300.0).to_dict()
+            # FRED BAMLEMCBPIOAS is in percent (e.g. 1.75 = 175 bps) — scale to bps
+            oas_bps = mp["em_oas"] * 100.0
+            oas_map = oas_bps.fillna(300.0).to_dict()
 
     out_rows: list[dict] = []
 

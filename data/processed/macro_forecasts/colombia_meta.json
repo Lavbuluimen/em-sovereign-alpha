@@ -1,0 +1,11 @@
+{
+  "country": "Colombia",
+  "lag_order": 3,
+  "aic": 6.4270096363386475,
+  "bic": 7.082191891471913,
+  "variables": [
+    "cpi_yoy",
+    "local_short_rate",
+    "fx_level_local_per_usd"
+  ]
+}

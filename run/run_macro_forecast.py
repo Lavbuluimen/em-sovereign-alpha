@@ -9,10 +9,10 @@ from em.models.macro_forecast import run_macro_forecast
 
 
 # Countries with sufficient monthly CPI + rate data on FRED (OECD members).
-# Colombia, Romania, Philippines, Malaysia are excluded (zero FRED coverage).
+# Brazil, Colombia, China fall back to BIS/IFS for CPI/rates (non-OECD).
 FORECAST_COUNTRIES = [
-    "Brazil", "Mexico", "Chile", "South Africa",
-    "Poland", "Hungary", "Indonesia",
+    "Brazil", "Mexico", "Colombia", "Chile", "South Africa",
+    "Poland", "Hungary", "Turkey", "China",
 ]
 
 

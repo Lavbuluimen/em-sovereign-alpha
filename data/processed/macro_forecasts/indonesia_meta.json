@@ -1,8 +1,8 @@
 {
   "country": "Indonesia",
   "lag_order": 4,
-  "aic": 7.138611270802986,
-  "bic": 7.9988716059396605,
+  "aic": 7.115418992633727,
+  "bic": 7.97139376824323,
   "variables": [
     "cpi_yoy",
     "local_short_rate",

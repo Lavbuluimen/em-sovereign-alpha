@@ -14,6 +14,9 @@ from em.country.universe import (
     IFS_COUNTRIES,
     IMF_WEO_FISCAL_COLS,
     SHORT_RATE_FRED,
+    YIELD10Y_FRED,
+    YIELD10Y_IFS,
+    YIELD10Y_OECD,
     YIELD10Y_STOOQ,
 )
 from em.data.bis import fetch_bis_policy_rates
@@ -62,11 +65,15 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Build country panel: FX returns, 10Y yields, hard spread proxy
+    # Fallback chain: Stooq (daily) → FRED (monthly) → IMF IFS (monthly) → OECD SDMX (monthly)
     country_panel = build_country_daily_panel(
         fx_tickers=FX_TICKERS,
         yield10y_stooq=YIELD10Y_STOOQ,
         start="2015-01-01",
         local_duration_years=5.0,
+        yield10y_fred=YIELD10Y_FRED,
+        yield10y_ifs=YIELD10Y_IFS,
+        yield10y_oecd=YIELD10Y_OECD,
     )
 
     # Add EMBI spread proxy columns (derived from hard_spread_proxy)
@@ -107,7 +114,7 @@ def main() -> None:
             country_panel["us_cpi_yoy"] = float("nan")
 
     # ── BIS + World Bank: fill CPI and short rate for non-OECD countries ────
-    # Colombia, Malaysia, Philippines, Romania have no FRED/OECD coverage.
+    # Brazil, Colombia, China have no FRED/OECD coverage — handled via IFS_COUNTRIES.
     # BIS provides monthly central bank policy rates; World Bank provides annual CPI.
     # Both fill NaN rows only (FRED takes precedence).
     bday_idx = pd.bdate_range(
@@ -144,6 +151,31 @@ def main() -> None:
             mask = (country_panel["country"] == country_name) & country_panel["cpi_yoy"].isna()
             country_panel.loc[mask, "cpi_yoy"] = country_panel.loc[mask, "date"].map(daily)
 
+    # ── Impute y10y gaps per country ─────────────────────────────────────────
+    # Forward-fill then backward-fill within each country so that short Stooq
+    # outages (rate-limiting, weekend/holiday gaps) don't propagate as NaN.
+    # Countries whose ticker returned *no* data at all will remain NaN — that
+    # is intentional: signal_confidence will be 0 and they'll be excluded from
+    # the backtest allocation rather than silently assigned stale values.
+    country_panel = country_panel.sort_values(["country", "date"]).reset_index(drop=True)
+    country_panel["y10y"] = country_panel.groupby("country")["y10y"].transform(
+        lambda s: s.ffill().bfill()
+    )
+    # Recompute y10y_chg, spread, and momentum from imputed y10y
+    country_panel["y10y_chg"] = country_panel.groupby("country")["y10y"].transform(
+        lambda s: s.diff()
+    )
+    country_panel["hard_spread_proxy"] = country_panel["y10y"] - country_panel["us10y"]
+    country_panel["embi_spread_proxy"] = country_panel["hard_spread_proxy"]
+    country_panel["embi_spread_20d_chg"] = country_panel.groupby("country")["embi_spread_proxy"].transform(
+        lambda s: s.diff(20)
+    )
+    # Recompute local_ret_proxy_usd = -duration*(Δy/100) + fx_usd_ret
+    _dur = 5.0
+    country_panel["local_ret_proxy_usd"] = (
+        -_dur * (country_panel["y10y_chg"] / 100.0) + country_panel["fx_usd_ret"]
+    )
+
     # Derived carry / value features
     country_panel["real_yield"] = country_panel["y10y"] - country_panel["cpi_yoy"]
     country_panel["fx_carry"] = (
@@ -165,7 +197,7 @@ def main() -> None:
         for col in IMF_WEO_FISCAL_COLS:
             country_panel[col] = float("nan")
 
-    # ── Reserves from World Bank (IMF WEO does not carry this series) ─────────
+    # ── Reserves: World Bank primary, IMF WEO ARA_BOP fallback ───────────────
     wb_panel = fetch_worldbank_panel(FISCAL_WB_INDICATORS, COUNTRY_ISO3, start_year=2010)
     if not wb_panel.empty:
         country_panel = country_panel.merge(wb_panel, on=["date", "country"], how="left")
@@ -176,6 +208,27 @@ def main() -> None:
     else:
         for col in FISCAL_WB_INDICATORS:
             country_panel[col] = float("nan")
+
+    # Fallback: if reserves_months still all-NaN, use IMF WEO ARA_BOP series
+    if "reserves_months" not in country_panel.columns or country_panel["reserves_months"].isna().all():
+        print("World Bank reserves unavailable — trying IMF WEO ARA_BOP fallback...")
+        imf_with_res = fetch_imf_weo_panel(COUNTRY_ISO3, start_year=2010, include_reserves=True)
+        if not imf_with_res.empty and "reserves_months" in imf_with_res.columns:
+            res_only = imf_with_res[["date", "country", "reserves_months"]].dropna(subset=["reserves_months"])
+            if not res_only.empty:
+                if "reserves_months" not in country_panel.columns:
+                    country_panel["reserves_months"] = float("nan")
+                country_panel = country_panel.merge(
+                    res_only.rename(columns={"reserves_months": "_res_imf"}),
+                    on=["date", "country"], how="left",
+                )
+                mask = country_panel["reserves_months"].isna() & country_panel["_res_imf"].notna()
+                country_panel.loc[mask, "reserves_months"] = country_panel.loc[mask, "_res_imf"]
+                country_panel.drop(columns=["_res_imf"], inplace=True)
+                country_panel["reserves_months"] = country_panel.groupby("country")["reserves_months"].transform(
+                    lambda x: x.ffill()
+                )
+                print("  IMF WEO ARA_BOP reserves loaded.")
 
     # Cross-sectional ranks (1 = best) among countries with data on each date
     country_panel["real_yield_rank"] = (
@@ -221,6 +274,26 @@ def main() -> None:
     print("Missing fiscal_balance_gdp count:", int(country_panel["fiscal_balance_gdp"].isna().sum()))
     print("Missing debt_gdp count:",           int(country_panel["debt_gdp"].isna().sum()))
     print("Missing reserves_months count:",    int(country_panel["reserves_months"].isna().sum()))
+
+    print("\nPer-country missing y10y:")
+    y10y_missing = (
+        country_panel.groupby("country")["y10y"]
+        .apply(lambda s: int(s.isna().sum()))
+        .sort_values(ascending=False)
+    )
+    for country, n in y10y_missing.items():
+        if n > 0:
+            print(f"  {country}: {n} missing")
+
+    print("\nPer-country missing reserves_months:")
+    res_missing = (
+        country_panel.groupby("country")["reserves_months"]
+        .apply(lambda s: int(s.isna().sum()))
+        .sort_values(ascending=False)
+    )
+    for country, n in res_missing.items():
+        if n > 0:
+            print(f"  {country}: {n} missing")
 
 
 if __name__ == "__main__":

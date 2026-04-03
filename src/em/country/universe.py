@@ -21,10 +21,31 @@ COUNTRY_UNIVERSE_ARCHIVED: list[dict] = [
             "Indonesia", "Malaysia", "Philippines", "Thailand",
         ],
     },
+    {
+        "version": 2,
+        "effective_from": "2026-03-13",
+        "effective_to":   "2026-04-01",
+        "retired_reason": (
+            "Romania, Indonesia, Malaysia, Philippines removed: replaced with "
+            "Turkey and China to improve universe quality and data coverage. "
+            "Romania lacks OECD/FRED yield series and has thin sovereign bond "
+            "market. Indonesia, Malaysia, Philippines have no FRED coverage and "
+            "thin daily yield data. Turkey (OECD member, deep bond market) and "
+            "China (world's second-largest economy, growing USD bond market) "
+            "added as more liquid, analytically significant replacements."
+        ),
+        "countries": [
+            "Brazil", "Mexico", "Colombia", "Chile",
+            "South Africa", "Poland", "Hungary", "Romania",
+            "Indonesia", "Malaysia", "Philippines",
+        ],
+    },
 ]
 
 # Active universe — countries currently in the model.
-# Last updated: 2026-03-13
+# Last updated: 2026-04-03
+# Turkey removed: no 10Y yield data available from any free public source
+# (not in OECD IRLT dataset; CBRT EVDS requires API key; IMF IFS times out).
 COUNTRY_UNIVERSE: list[str] = [
     "Brazil",
     "Mexico",
@@ -33,10 +54,7 @@ COUNTRY_UNIVERSE: list[str] = [
     "South Africa",
     "Poland",
     "Hungary",
-    "Romania",
-    "Indonesia",
-    "Malaysia",
-    "Philippines",
+    "China",
 ]
 
 # ── Per-country market data config ───────────────────────────────────────────
@@ -49,10 +67,7 @@ FX_TICKERS = {
     "South Africa": "ZAR=X",
     "Poland":       "PLN=X",
     "Hungary":      "HUF=X",
-    "Romania":      "RON=X",
-    "Indonesia":    "IDR=X",
-    "Malaysia":     "MYR=X",
-    "Philippines":  "PHP=X",
+    "China":        "CNY=X",
 }
 
 # Stooq daily 10Y government bond yield tickers.
@@ -65,10 +80,40 @@ YIELD10Y_STOOQ = {
     "South Africa": "10YZAY.B",
     "Poland":       "10YPLY.B",
     "Hungary":      "10YHUY.B",
-    "Romania":      "10YROY.B",
-    "Indonesia":    "10YIDY.B",
-    "Malaysia":     "10YMYY.B",
-    "Philippines":  "10YPHY.B",
+    "China":        "10YCNY.B",
+}
+
+# IMF IFS fallback: countries that have no OECD/FRED 10Y yield series.
+# FIGB_PA = Government Bond Yield (benchmark, % p.a.) from IMF IFS SDMX API.
+# Used as the third-tier fallback (after Stooq and FRED fail).
+# IFS fallback retained for Brazil/Colombia/China; Turkey removed (no coverage).
+YIELD10Y_IFS = {
+    "Brazil":       "BR",
+    "Colombia":     "CO",
+    "China":        "CN",
+}
+
+# OECD SDMX DF_FINMARK fallback — IRLT measure (long-term govt bond yield, monthly).
+# Confirmed working for BRA, COL, CHN. Turkey is absent from this dataset.
+YIELD10Y_OECD = {
+    "Brazil":   "BRA",
+    "Colombia": "COL",
+    "China":    "CHN",
+}
+
+# FRED fallback: OECD monthly long-term (10Y) government bond yields.
+# Series template: IRLTLT01{CC}M156N  (OECD via FRED, monthly, %).
+# Used when Stooq is unavailable/blocked; linearly interpolated to daily.
+YIELD10Y_FRED = {
+    "Brazil":       "IRLTLT01BRM156N",   # OECD key partner — tracked in MEI
+    "Mexico":       "IRLTLT01MXM156N",
+    "Colombia":     "IRLTLT01COM156N",   # OECD member since 2020
+    "Chile":        "IRLTLT01CLM156N",
+    "South Africa": "IRLTLT01ZAM156N",
+    "Poland":       "IRLTLT01PLM156N",
+    "Hungary":      "IRLTLT01HUM156N",
+    "China":        "INTGSBCNM193N",     # OECD MEI long-term govt bond yield
+    "US":           "IRLTLT01USM156N",
 }
 
 # ── Global macro data config ──────────────────────────────────────────────────
@@ -95,36 +140,26 @@ GLOBAL_MACRO_YAHOO = {
 # Monthly CPI YoY (%) per country — OECD via FRED.
 # Template: CPALTT01{CC}M659N  (CC = 2-letter ISO code)
 # Used to compute real_yield = y10y - cpi_yoy (in build_country_panel.py).
+# Non-OECD countries (Brazil, Colombia, China) fall back to BIS/World Bank via IFS_COUNTRIES.
 CPI_YOY_FRED: dict[str, str] = {
-    "Brazil":       "CPALTT01BRM659N",
     "Mexico":       "CPALTT01MXM659N",
-    "Colombia":     "CPALTT01COM659N",
     "Chile":        "CPALTT01CLM659N",
     "South Africa": "CPALTT01ZAM659N",
     "Poland":       "CPALTT01PLM659N",
     "Hungary":      "CPALTT01HUM659N",
-    "Romania":      "CPALTT01ROM659N",
-    "Indonesia":    "CPALTT01IDM659N",
-    "Malaysia":     "CPALTT01MYM659N",
-    "Philippines":  "CPALTT01PHM659N",
     "US":           "CPALTT01USM659N",
 }
 
 # Monthly short-term interbank rate (%) per country — OECD via FRED.
 # Template: IRSTCI01{CC}M156N  (CC = 2-letter ISO code)
 # "US" entry provides us_short_rate for fx_carry = local_short_rate - us_short_rate.
+# Non-OECD countries fall back to BIS policy rates via IFS_COUNTRIES.
 SHORT_RATE_FRED: dict[str, str] = {
-    "Brazil":       "IRSTCI01BRM156N",
     "Mexico":       "IRSTCI01MXM156N",
-    "Colombia":     "IRSTCI01COM156N",
     "Chile":        "IRSTCI01CLM156N",
     "South Africa": "IRSTCI01ZAM156N",
     "Poland":       "IRSTCI01PLM156N",
     "Hungary":      "IRSTCI01HUM156N",
-    "Romania":      "IRSTCI01ROM156N",
-    "Indonesia":    "IRSTCI01IDM156N",
-    "Malaysia":     "IRSTCI01MYM156N",
-    "Philippines":  "IRSTCI01PHM156N",
     "US":           "IRSTCI01USM156N",
 }
 
@@ -138,7 +173,7 @@ EMBI_GLOBAL_FRED: dict[str, str] = {
 }
 
 # J.P. Morgan EMBI Global Diversified index weights (approximate, as of early 2026).
-# Source: JPMorgan index factsheets. Sum of raw weights ≈ 0.345 (11-country sub-universe);
+# Source: JPMorgan index factsheets. Sum of raw weights ≈ 0.271 (9-country sub-universe);
 # allocator.py normalises these to sum to 1.0 within the active universe.
 # Update when index rebalances materially (>1pp change on any country).
 EMBI_WEIGHTS: dict[str, float] = {
@@ -149,10 +184,7 @@ EMBI_WEIGHTS: dict[str, float] = {
     "South Africa": 0.0200,
     "Poland":       0.0160,
     "Hungary":      0.0100,
-    "Romania":      0.0130,
-    "Indonesia":    0.0480,
-    "Malaysia":     0.0290,
-    "Philippines":  0.0360,
+    "China":        0.0250,
 }
 
 # ── Commodity sensitivity per country ─────────────────────────────────────────
@@ -168,10 +200,7 @@ COMMODITY_SENSITIVITY: dict[str, float] = {
     "South Africa": +0.8,   # gold, platinum, coal
     "Poland":       -0.5,   # net energy importer
     "Hungary":      -0.5,   # net energy importer
-    "Romania":      -0.3,   # small domestic oil, net importer overall
-    "Indonesia":    +0.5,   # coal, palm oil, nickel
-    "Malaysia":     +0.5,   # crude oil, LNG, palm oil
-    "Philippines":  -0.3,   # net commodity importer
+    "China":        -0.4,   # world's largest oil importer, net commodity importer overall
 }
 
 # ── Sovereign credit rating composite ─────────────────────────────────────────
@@ -189,10 +218,7 @@ SOVEREIGN_RATINGS: dict[str, float] = {
     "South Africa": 5.0,   # S&P BB-, Moody's Ba2
     "Poland":      13.0,   # S&P A-, Moody's A2
     "Hungary":     11.0,   # S&P BBB, Moody's Baa2
-    "Romania":      9.0,   # S&P BBB-, Moody's Baa3
-    "Indonesia":   11.0,   # S&P BBB, Moody's Baa2
-    "Malaysia":    14.0,   # S&P A-, Moody's A3
-    "Philippines": 11.0,   # S&P BBB+, Moody's Baa2
+    "China":       15.0,   # S&P A+, Moody's A1
 }
 
 # ── World Bank indicators ─────────────────────────────────────────────────────
@@ -204,18 +230,17 @@ FISCAL_WB_INDICATORS: dict[str, str] = {
 
 # ── IMF WEO indicators ────────────────────────────────────────────────────────
 # Fetched via the `weo` library (pip install weo). No API key required.
-# Covers all 11 universe countries; World Bank GC.DOD.TOTL.GD.ZS misses several.
+# Covers all 9 universe countries; World Bank GC.DOD.TOTL.GD.ZS misses several.
 IMF_WEO_FISCAL_COLS: tuple[str, ...] = ("fiscal_balance_gdp", "debt_gdp")
 
 # ── IMF IFS countries ─────────────────────────────────────────────────────────
 # Countries missing CPI and short-rate coverage on FRED (non-OECD).
-# Fetched via IMF IFS SDMX JSON API. No API key required.
+# Fetched via IMF IFS SDMX JSON API / BIS / World Bank. No API key required.
 # ISO 3166-1 alpha-2 codes as used by the IMF SDMX service.
 IFS_COUNTRIES: dict[str, str] = {
-    "Colombia":    "CO",
-    "Malaysia":    "MY",
-    "Philippines": "PH",
-    "Romania":     "RO",
+    "Brazil":    "BR",
+    "Colombia":  "CO",
+    "China":     "CN",
 }
 
 # ISO 3166-1 alpha-3 codes for the active universe (needed by wbdata).
@@ -227,10 +252,7 @@ COUNTRY_ISO3: dict[str, str] = {
     "South Africa": "ZAF",
     "Poland":       "POL",
     "Hungary":      "HUN",
-    "Romania":      "ROU",
-    "Indonesia":    "IDN",
-    "Malaysia":     "MYS",
-    "Philippines":  "PHL",
+    "China":        "CHN",
 }
 
 # ── FOMC meeting dates ────────────────────────────────────────────────────────

@@ -14,9 +14,17 @@ def build_country_daily_panel(
     yield10y_stooq: dict[str, str],
     start: str = "2015-01-01",
     local_duration_years: float = 5.0,
+    yield10y_fred: Optional[dict[str, str]] = None,
+    yield10y_ifs: Optional[dict[str, str]] = None,
+    yield10y_oecd: Optional[dict[str, str]] = None,
 ) -> pd.DataFrame:
     fx = fetch_many_yahoo_close(fx_tickers, start=start)
-    y10_daily = pull_yield10y_panel(yield10y_stooq, start=start)
+    y10_daily = pull_yield10y_panel(
+        yield10y_stooq, start=start,
+        fred_fallback=yield10y_fred,
+        ifs_fallback=yield10y_ifs,
+        oecd_fallback=yield10y_oecd,
+    )
     us10_daily = fetch_fred_series("DGS10", start=start).rename("us10y")
 
     if fx.empty:

@@ -1,0 +1,11 @@
+{
+  "country": "China",
+  "lag_order": 1,
+  "aic": -13.853148075472543,
+  "bic": -13.593640033685894,
+  "variables": [
+    "cpi_yoy",
+    "local_short_rate",
+    "fx_level_local_per_usd"
+  ]
+}

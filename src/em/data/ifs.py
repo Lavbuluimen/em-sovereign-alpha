@@ -14,7 +14,10 @@ _CPI_INDICATOR = "PCPI_IX"
 # Short-term rate indicators in priority order
 _RATE_INDICATORS = ["FIMM_PA", "FPOLM_PA", "FIDR_PA"]
 
-_TIMEOUT = 30  # seconds per request
+# Government bond yield (benchmark long-term rate, % p.a.) — used as 10Y proxy
+_BOND_YIELD_INDICATOR = "FIGB_PA"
+
+_TIMEOUT = 60  # seconds per request
 
 
 def _fetch_ifs_series(
@@ -154,3 +157,54 @@ def fetch_ifs_panel(
     df = pd.DataFrame(rows)
     df = df.sort_values(["country", "date"]).reset_index(drop=True)
     return df
+
+
+def fetch_ifs_yield10y(
+    countries: dict[str, str],
+    start: str = "2015-01-01",
+) -> dict[str, pd.Series]:
+    """Fetch monthly government bond yield (FIGB_PA) from IMF IFS.
+
+    FIGB_PA is the IMF IFS benchmark government bond yield (% p.a.), typically
+    the 10Y rate or closest available tenor.  Used as a fallback when Stooq and
+    FRED are unavailable for a country.
+
+    Parameters
+    ----------
+    countries:
+        Mapping of {country_name: ISO 3166-1 alpha-2 code}.
+    start:
+        Start date string (YYYY-MM-DD).
+
+    Returns
+    -------
+    dict mapping country_name → daily pd.Series (linearly interpolated from monthly).
+    Countries with no IFS data are omitted.
+    """
+    iso2_list = list(countries.values())
+    name_map = {v: k for k, v in countries.items()}
+    start_period = start[:7]
+
+    raw = _fetch_ifs_series(iso2_list, _BOND_YIELD_INDICATOR, start=start_period)
+    if not raw:
+        print(f"  [warn] IMF IFS {_BOND_YIELD_INDICATOR} returned no data for: {iso2_list}")
+        return {}
+
+    result: dict[str, pd.Series] = {}
+    for iso2, monthly_s in raw.items():
+        country_name = name_map.get(iso2)
+        if country_name is None:
+            continue
+        # Convert PeriodIndex → DatetimeIndex (first of month)
+        ts = monthly_s.copy()
+        ts.index = ts.index.to_timestamp()
+        if ts.dropna().empty:
+            continue
+        # Linearly interpolate monthly → business-day frequency
+        bday_idx = pd.bdate_range(start=ts.index.min(), end=ts.index.max())
+        daily = ts.reindex(bday_idx.union(ts.index)).sort_index()
+        daily = daily.interpolate(method="time").reindex(bday_idx)
+        daily.name = country_name
+        result[country_name] = daily
+
+    return result

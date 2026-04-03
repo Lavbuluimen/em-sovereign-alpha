@@ -117,8 +117,8 @@ def build_country_scores(
     for col in cs_cols:
         df[f"{col}_z"] = zscore_cross_section(df, col).fillna(0.0)
 
-    # Carry/value signals — NaN for 4 zero-coverage countries (Colombia, Romania,
-    # Philippines, Malaysia); fillna(0.0) gives neutral score on those signals.
+    # Carry/value signals — NaN for countries with incomplete data (e.g. Brazil,
+    # Colombia, China pre-IFS coverage); fillna(0.0) gives neutral score on those signals.
     for col in ("real_yield", "fx_carry"):
         if col in df.columns:
             df[f"{col}_z"] = zscore_cross_section(df, col).fillna(0.0)
@@ -247,7 +247,7 @@ def build_country_scores(
 
     # Signal confidence weights mirror score_raw weight proportions so that
     # each missing signal degrades confidence proportionally.
-    # Colombia / Romania / Philippines / Malaysia: real_yield + fx_carry = 0
+    # Countries with partial data (e.g. Brazil, Colombia, China): real_yield + fx_carry = 0
     #   → signal_confidence ≤ 0.70 → score naturally shrunk → smaller active tilts.
     df["signal_confidence"] = (
         0.30 * df["yield_coverage_60d"]      +

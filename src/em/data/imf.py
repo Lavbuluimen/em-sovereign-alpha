@@ -9,6 +9,7 @@ import pandas as pd
 # WEO indicator codes
 WEO_DEBT_CODE = "GGXWDG_NGDP"     # General government gross debt (% GDP)
 WEO_FISCAL_CODE = "GGXCNL_NGDP"   # General government net lending/borrowing (% GDP)
+WEO_RESERVES_CODE = "ARA_BOP"     # Reserve assets in months of prospective imports
 
 # WEO release to download — update each April/October when IMF publishes a new edition
 _WEO_YEAR = 2024
@@ -19,8 +20,9 @@ def fetch_imf_weo_panel(
     countries_iso3: dict[str, str],
     start_year: int = 2010,
     cache_dir: Path | None = None,
+    include_reserves: bool = False,
 ) -> pd.DataFrame:
-    """Fetch IMF WEO fiscal_balance_gdp and debt_gdp for all countries.
+    """Fetch IMF WEO fiscal_balance_gdp, debt_gdp (and optionally reserves_months).
 
     Downloads the IMF World Economic Outlook dataset via the ``weo`` library.
     The downloaded CSV is cached in ``cache_dir`` (or the system temp dir) so
@@ -34,11 +36,16 @@ def fetch_imf_weo_panel(
         First year to include. Rows before this year are dropped.
     cache_dir:
         Directory to cache the WEO CSV. Defaults to the system temp dir.
+    include_reserves:
+        If True, also extract ``reserves_months`` from the WEO series
+        ``ARA_BOP`` (reserve assets in months of prospective imports).
+        Use as a fallback when the World Bank fetch fails.
 
     Returns
     -------
     pd.DataFrame
-        Long-format with columns [date, country, fiscal_balance_gdp, debt_gdp].
+        Long-format with columns [date, country, fiscal_balance_gdp, debt_gdp]
+        plus ``reserves_months`` when ``include_reserves=True``.
         ``date`` is a pandas Timestamp at annual frequency (Jan 1 of each year).
         The caller is responsible for forward-filling to business-day frequency.
         Returns an empty DataFrame if the ``weo`` library is not installed or
@@ -73,13 +80,18 @@ def fetch_imf_weo_panel(
             warnings.warn(f"IMF WEO download failed: {exc}", stacklevel=2)
             return pd.DataFrame(columns=["date", "country", "fiscal_balance_gdp", "debt_gdp"])
 
+    out_cols = ["date", "country", "fiscal_balance_gdp", "debt_gdp"]
+    if include_reserves:
+        out_cols.append("reserves_months")
+
     try:
         w = weo.WEO(str(cache_file))
-        debt_wide   = w.getc(WEO_DEBT_CODE)
-        fiscal_wide = w.getc(WEO_FISCAL_CODE)
+        debt_wide    = w.getc(WEO_DEBT_CODE)
+        fiscal_wide  = w.getc(WEO_FISCAL_CODE)
+        reserves_wide = w.getc(WEO_RESERVES_CODE) if include_reserves else None
     except Exception as exc:
         warnings.warn(f"IMF WEO parsing failed: {exc}", stacklevel=2)
-        return pd.DataFrame(columns=["date", "country", "fiscal_balance_gdp", "debt_gdp"])
+        return pd.DataFrame(columns=out_cols)
 
     iso3_list = list(countries_iso3.values())
     name_map = {v: k for k, v in countries_iso3.items()}
@@ -99,15 +111,20 @@ def fetch_imf_weo_panel(
             year = int(str(period))
             if year < start_year:
                 continue
-            rows.append({
+            row: dict = {
                 "date":               pd.Timestamp(f"{year}-01-01"),
                 "country":            name_map[iso3],
                 "debt_gdp":           debt_wide.loc[period, iso3] if period in debt_wide.index else float("nan"),
                 "fiscal_balance_gdp": fiscal_wide.loc[period, iso3] if period in fiscal_wide.index else float("nan"),
-            })
+            }
+            if include_reserves and reserves_wide is not None and iso3 in reserves_wide.columns:
+                row["reserves_months"] = (
+                    reserves_wide.loc[period, iso3] if period in reserves_wide.index else float("nan")
+                )
+            rows.append(row)
 
     if not rows:
-        return pd.DataFrame(columns=["date", "country", "fiscal_balance_gdp", "debt_gdp"])
+        return pd.DataFrame(columns=out_cols)
 
     df = pd.DataFrame(rows)
     df = df.sort_values(["country", "date"]).reset_index(drop=True)

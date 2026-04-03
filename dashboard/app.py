@@ -345,21 +345,17 @@ def render_executive_summary():
     n_countries = len(latest_port)
     top_country = latest_port.iloc[0]["country"]
     top_weight = latest_port.iloc[0]["weight"]
-    avg_duration = (latest_port["duration_tilt_years"] * latest_port["weight"]).sum()
     hard_total = latest_port["hard_w"].sum()
     local_total = latest_port["local_w"].sum()
 
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4 = st.columns(4)
     with c1:
         metric_card("Countries", str(n_countries), "Active in universe")
     with c2:
         metric_card("Top Allocation", f"{top_weight:.1%}", top_country)
     with c3:
-        metric_card("Avg Portfolio Duration", f"{avg_duration:+.2f}yr",
-                     "Short" if avg_duration < 0 else "Long" if avg_duration > 0 else "Neutral")
-    with c4:
         metric_card("Hard / Local", f"{hard_total:.0%} / {local_total:.0%}", "Currency split")
-    with c5:
+    with c4:
         if "regime" in latest_port.columns:
             regime_val = str(latest_port["regime"].iloc[0])
             regime_color = {"Green": COLORS["green"], "Amber": COLORS["amber"], "Red": COLORS["red"]}.get(regime_val, COLORS["muted"])
@@ -382,6 +378,10 @@ def render_executive_summary():
             _dxy_mu  = _dxy_chg.rolling(252, min_periods=60).mean()
             _dxy_sd  = _dxy_chg.rolling(252, min_periods=60).std().replace(0, float("nan"))
             _mp_full["_dxy_z"] = (_dxy_chg - _dxy_mu) / _dxy_sd
+        # FRED BAMLEMCBPIOAS is in percent (e.g. 1.75); scale to bps to match thresholds
+        if "em_oas" in _mp_full.columns:
+            _mp_full["em_oas"] = _mp_full["em_oas"] * 100.0
+
         _cutoff90 = latest_date - pd.Timedelta(days=90)
         _mp90 = _mp_full[_mp_full["date"] >= _cutoff90].copy()
 
@@ -1097,7 +1097,7 @@ def render_portfolio_detail():
 
     # --- Allocation detail table ---
     display_cols = ["country", "score", "regime", "weight", "hard_w", "local_w",
-                    "local_share", "active_w", "bench_w", "duration_tilt_years"]
+                    "local_share", "active_w", "bench_w"]
     display_cols = [c for c in display_cols if c in latest.columns]
     display = latest[display_cols].copy().rename(columns=COLUMN_LABELS)
 
@@ -1648,7 +1648,7 @@ def render_weekly_history():
     table_cols = [c for c in [
         "country", "score", "regime", "weight", "w_change",
         "action", "cost_aware_action", "tc_estimate",
-        "hard_w", "local_w", "local_share", "duration_tilt_years",
+        "hard_w", "local_w", "local_share",
     ] if c in week_sorted.columns]
 
     st.dataframe(
